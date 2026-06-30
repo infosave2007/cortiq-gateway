@@ -23,6 +23,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   semantically near a previous one (cosine threshold, TTL, ring buffer), skipping the
   model call. Partitioned by routing signature; hit-rate and cost saved are tracked and
   shown on the dashboard; configurable from Settings (`[cache]`).
+- **MCP server** (`POST /mcp`, JSON-RPC 2.0): exposes routing to MCP-native orchestrators
+  via two tools — `cortiq_route` (classify → decision) and `cortiq_chat` (route → answer).
 
 ## [0.1.0] - 2026-06-30
 

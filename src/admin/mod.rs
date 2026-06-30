@@ -281,7 +281,7 @@ async fn meta() -> ApiResult {
         "caps": ["tools", "vision"],
         "protocols_impl": {
             "openai_chat": true, "openai_completions": false, "openai_embeddings": true,
-            "openai_models": false, "anthropic_messages": true, "mcp": false, "native_passthrough": false
+            "openai_models": false, "anthropic_messages": true, "mcp": true, "native_passthrough": false
         },
         "languages": ["en", "ru", "de", "fr", "es", "zh", "tr"],
     }))
