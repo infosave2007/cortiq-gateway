@@ -9,6 +9,7 @@
 #![allow(dead_code)]
 
 mod admin;
+mod cache;
 mod config;
 mod error;
 mod model;

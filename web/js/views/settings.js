@@ -42,6 +42,18 @@ export async function renderSettings() {
   const statsEnabled = check(t("settings.stats.enabled"), s.stats?.enabled);
   const statsFile = h("input", { value: s.stats?.file || "" });
   const statsRet = h("input", { value: s.stats?.retention || "7d" });
+  // cache
+  const modelsData = await api.listModels();
+  const embedModels = (modelsData.models || []).filter((m) => m.kind === "embedding").map((m) => m.id);
+  const cacheEnabled = check(t("settings.cache.enabled"), s.cache?.enabled);
+  const cacheThresh = h("input", { type: "number", step: "0.01", value: s.cache?.threshold ?? 0.92 });
+  const cacheTtlIn = h("input", { value: s.cache?.ttl || "1h" });
+  const cacheEmbedSel = h(
+    "select",
+    {},
+    h("option", { value: "" }, "auto"),
+    ...embedModels.map((id) => h("option", { value: id, selected: id === s.cache?.embed_model }, id))
+  );
 
   const saveBtn = h("button", { class: "btn primary" }, t("common.save"));
   saveBtn.addEventListener("click", async () => {
@@ -71,11 +83,19 @@ export async function renderSettings() {
         retention: statsRet.value.trim() || "7d",
         ring_size: s.stats?.ring_size ?? 500,
       },
+      cache: {
+        enabled: cacheEnabled.cb.checked,
+        threshold: parseFloat(cacheThresh.value) || 0.92,
+        ttl: cacheTtlIn.value.trim() || "1h",
+        max_entries: s.cache?.max_entries ?? 1000,
+        embed_model: cacheEmbedSel.value || null,
+      },
     };
     // serde: drop null optionals
     if (!patch.router.api_key_env) delete patch.router.api_key_env;
     if (!patch.router.taxonomy_id) delete patch.router.taxonomy_id;
     if (!patch.telemetry.otlp_endpoint_env) delete patch.telemetry.otlp_endpoint_env;
+    if (!patch.cache.embed_model) delete patch.cache.embed_model;
     try {
       const r = await api.putSettings(patch);
       toast(r.needs_restart ? t("settings.needsRestart") : t("toast.saved"), r.needs_restart ? "warn" : "good");
@@ -170,6 +190,15 @@ export async function renderSettings() {
         statsEnabled.node,
         field(t("settings.stats.file"), statsFile),
         field(t("settings.stats.retention"), statsRet)
+      ),
+      h(
+        "div",
+        { class: "card" },
+        h("div", { class: "card-head" }, h("h3", {}, t("settings.cache"))),
+        cacheEnabled.node,
+        h("div", { class: "row" }, field(t("settings.cache.threshold"), cacheThresh), field(t("settings.cache.ttl"), cacheTtlIn)),
+        field(t("settings.cache.embed"), cacheEmbedSel),
+        h("div", { class: "hint" }, t("settings.cache.note"))
       )
     ),
     h(

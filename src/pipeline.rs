@@ -4,9 +4,9 @@
 
 use crate::error::{GatewayError, Result};
 use crate::model::{
-    ChatRequest, ChatResponse, Message, RouteDecision, RouteInfo, RoutingDirective,
+    ChatRequest, ChatResponse, Choice, Message, RouteDecision, RouteInfo, RoutingDirective, Usage,
 };
-use crate::state::SharedState;
+use crate::state::{Live, SharedState};
 use crate::stats::RequestRecord;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
@@ -27,6 +27,45 @@ impl Pipeline {
             RoutingDirective::Auto { .. } => "auto",
         }
         .to_string();
+
+        // --- semantic cache lookup (short-circuit before the model call) ---
+        let cache = &state.cache;
+        let mut cache_key: Option<(String, Vec<f32>)> = None;
+        if cache.enabled() {
+            let live = state.live();
+            let sig = cache_sig(&req);
+            let text = self.extract_text(&req.messages, "concat_all", live.cfg.route.max_chars);
+            let embed_model = cache
+                .embed_model()
+                .map(|s| s.to_string())
+                .or_else(|| first_embedding_model(&live));
+            if let Some(model_id) = embed_model {
+                if let Some(vec) = embed(&live, &model_id, &text).await {
+                    if let Some(hit) = cache.lookup(&sig, &vec) {
+                        state.stats.record(RequestRecord {
+                            ts: now_secs(),
+                            account,
+                            protocol,
+                            directive,
+                            task_label: "cache".into(),
+                            tier: "cache".into(),
+                            score: 0.0,
+                            model_id: hit.model_used.clone(),
+                            route_source: "cache".into(),
+                            prompt_tokens: hit.prompt_tokens,
+                            completion_tokens: hit.completion_tokens,
+                            cost_usd: 0.0,
+                            latency_ms: started.elapsed().as_millis() as u64,
+                            outcome: "ok".into(),
+                            failover: false,
+                            error: None,
+                        });
+                        return Ok(cached_response(&hit));
+                    }
+                    cache_key = Some((sig, vec));
+                }
+            }
+        }
 
         let result = self.run_inner(req, state).await;
 
@@ -75,6 +114,26 @@ impl Pipeline {
             },
         };
         state.stats.record(rec);
+
+        // --- store a successful response in the semantic cache ---
+        if let (Ok(resp), Some((sig, vec))) = (&result, cache_key) {
+            let content = resp
+                .choices
+                .first()
+                .map(|c| c.message.content.clone())
+                .unwrap_or_default();
+            if !content.is_empty() {
+                state.cache.insert(
+                    sig,
+                    vec,
+                    resp.cortiq.selected_model.clone(),
+                    content,
+                    resp.usage.prompt_tokens,
+                    resp.usage.completion_tokens,
+                    resp.cortiq.cost_usd,
+                );
+            }
+        }
 
         result
     }
@@ -348,6 +407,69 @@ fn now_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+/// Routing signature used to partition cache entries (so a pinned model's cached
+/// answer is never returned for a different model/profile).
+fn cache_sig(req: &ChatRequest) -> String {
+    match &req.routing {
+        RoutingDirective::Auto { profile } => {
+            format!("auto:{}", profile.as_deref().unwrap_or(""))
+        }
+        RoutingDirective::Pinned { model_id } => format!("pinned:{model_id}"),
+    }
+}
+
+fn first_embedding_model(live: &Live) -> Option<String> {
+    live.cfg
+        .models
+        .iter()
+        .find(|m| m.kind == "embedding")
+        .map(|m| m.id.clone())
+}
+
+/// Embed `text` with the given model; returns the embedding vector (or None on error).
+async fn embed(live: &Live, model_id: &str, text: &str) -> Option<Vec<f32>> {
+    let provider = live.registry.get(model_id)?;
+    let body = provider.embed(serde_json::json!(text)).await.ok()?;
+    let arr = body["data"][0]["embedding"].as_array()?;
+    Some(
+        arr.iter()
+            .filter_map(|x| x.as_f64())
+            .map(|x| x as f32)
+            .collect(),
+    )
+}
+
+fn cached_response(hit: &crate::cache::CacheHit) -> ChatResponse {
+    ChatResponse {
+        id: "cache".to_string(),
+        model_used: hit.model_used.clone(),
+        choices: vec![Choice {
+            index: 0,
+            message: Message {
+                role: "assistant".into(),
+                content: hit.content.clone(),
+                tool_calls: vec![],
+            },
+            finish_reason: "stop".into(),
+        }],
+        usage: Usage {
+            prompt_tokens: hit.prompt_tokens,
+            completion_tokens: hit.completion_tokens,
+            total_tokens: hit.prompt_tokens + hit.completion_tokens,
+        },
+        cortiq: RouteInfo {
+            task_label: "cache".into(),
+            complexity_score: 0.0,
+            complexity_tier: "cache".into(),
+            selected_model: hit.model_used.clone(),
+            route_source: "cache".into(),
+            router_request_id: None,
+            cost_usd: 0.0,
+            failover: false,
+        },
+    }
 }
 
 fn record_error(

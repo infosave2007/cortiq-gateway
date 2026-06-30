@@ -108,6 +108,22 @@ export async function renderDashboard() {
         barList(breakdown, num)
       ),
 
+      // semantic cache
+      stats.cache && stats.cache.enabled
+        ? h(
+            "div",
+            { class: "card" },
+            h("div", { class: "card-head" }, h("h3", {}, t("dash.cache"))),
+            h(
+              "div",
+              { class: "kpis" },
+              kpi(pct(stats.cache.hit_rate), t("dash.cache.hitRate")),
+              kpi(num(stats.cache.hits), t("dash.cache.hits")),
+              kpi(money(stats.cache.saved_usd), t("dash.cache.saved"))
+            )
+          )
+        : null,
+
       // recent
       h(
         "div",

@@ -31,6 +31,8 @@ pub struct Config {
     pub admin: AdminCfg,
     #[serde(default)]
     pub stats: StatsCfg,
+    #[serde(default)]
+    pub cache: CacheCfg,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -318,6 +320,46 @@ fn default_stats_ring() -> usize {
 }
 fn default_stats_retention() -> String {
     "7d".into()
+}
+
+/// Semantic (embedding-based) response cache — returns a cached answer for prompts
+/// that are semantically near a previous one, skipping the (expensive) model call.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CacheCfg {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Cosine-similarity threshold for a hit (0..1).
+    #[serde(default = "default_semcache_threshold")]
+    pub threshold: f32,
+    /// Entry time-to-live, e.g. `1h`.
+    #[serde(default = "default_semcache_ttl")]
+    pub ttl: String,
+    /// Maximum number of cached entries (ring buffer).
+    #[serde(default = "default_semcache_max")]
+    pub max_entries: usize,
+    /// Embedding model id (defaults to the first `kind = "embedding"` model).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub embed_model: Option<String>,
+}
+impl Default for CacheCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            threshold: default_semcache_threshold(),
+            ttl: default_semcache_ttl(),
+            max_entries: default_semcache_max(),
+            embed_model: None,
+        }
+    }
+}
+fn default_semcache_threshold() -> f32 {
+    0.92
+}
+fn default_semcache_ttl() -> String {
+    "1h".into()
+}
+fn default_semcache_max() -> usize {
+    1000
 }
 
 impl Config {

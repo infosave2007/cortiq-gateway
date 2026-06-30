@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   SSE), so Claude-native clients can target the gateway.
 - **Embeddings**: `POST /v1/embeddings` inbound + provider `embed()`; embedding models
   are now resolvable from the pool.
+- **Semantic cache**: embedding-based cache that returns a stored answer for prompts
+  semantically near a previous one (cosine threshold, TTL, ring buffer), skipping the
+  model call. Partitioned by routing signature; hit-rate and cost saved are tracked and
+  shown on the dashboard; configurable from Settings (`[cache]`).
 
 ## [0.1.0] - 2026-06-30
 
