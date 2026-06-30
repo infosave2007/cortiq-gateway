@@ -3,10 +3,36 @@
 //! to the pipeline, then converts the canonical [`ChatResponse`] back to OpenAI format.
 
 use crate::error::{GatewayError, Result};
-use crate::model::{ChatRequest, GenParams, Message, RequestMeta, RoutingDirective};
+use crate::model::{ChatRequest, GenParams, Message, RequestMeta, RouteInfo, RoutingDirective};
 use crate::state::SharedState;
+use axum::response::{IntoResponse, Response};
 use axum::{extract::State, routing::post, Json, Router};
 use serde::Deserialize;
+
+/// Build the `X-Cortiq-*` response headers from routing metadata.
+pub(crate) fn cortiq_headers(c: &RouteInfo) -> axum::http::HeaderMap {
+    use axum::http::{HeaderMap, HeaderValue};
+    fn put(h: &mut HeaderMap, k: &'static str, v: &str) {
+        if let Ok(val) = HeaderValue::from_str(v) {
+            h.insert(k, val);
+        }
+    }
+    let mut h = HeaderMap::new();
+    put(&mut h, "X-Cortiq-Task-Label", &c.task_label);
+    put(
+        &mut h,
+        "X-Cortiq-Complexity-Score",
+        &c.complexity_score.to_string(),
+    );
+    put(&mut h, "X-Cortiq-Complexity-Tier", &c.complexity_tier);
+    put(&mut h, "X-Cortiq-Selected-Model", &c.selected_model);
+    put(&mut h, "X-Cortiq-Route-Source", &c.route_source);
+    put(&mut h, "X-Cortiq-Cost-Usd", &c.cost_usd.to_string());
+    if let Some(id) = &c.router_request_id {
+        put(&mut h, "X-Cortiq-Request-Id", id);
+    }
+    h
+}
 
 pub fn routes() -> Router<SharedState> {
     Router::new().route("/v1/chat/completions", post(handler))
@@ -46,7 +72,7 @@ fn parse_routing(model: &str) -> RoutingDirective {
 async fn handler(
     State(state): State<SharedState>,
     Json(req): Json<OpenAiChatRequest>,
-) -> Result<impl axum::response::IntoResponse> {
+) -> Result<Response> {
     // hot protocol toggle: if the adapter is disabled in config — return 404
     if !state.live().cfg.protocols.openai_chat {
         return Err(GatewayError::InvalidRequest(
@@ -77,52 +103,23 @@ async fn handler(
         },
     };
 
+    // streaming: forward provider SSE chunks verbatim with X-Cortiq-* headers
     if req.stream {
-        return Err(GatewayError::InvalidRequest(
-            "Streaming is not yet supported in this version".into(),
-        ));
+        let (info, stream) = state.pipeline.run_stream(canonical, &state).await?;
+        let mut headers = cortiq_headers(&info);
+        headers.insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("text/event-stream"),
+        );
+        headers.insert(
+            axum::http::header::CACHE_CONTROL,
+            axum::http::HeaderValue::from_static("no-cache"),
+        );
+        return Ok((headers, axum::body::Body::from_stream(stream)).into_response());
     }
 
     let resp = state.pipeline.run(canonical, &state).await?;
-
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert(
-        "X-Cortiq-Task-Label",
-        axum::http::HeaderValue::from_str(&resp.cortiq.task_label)
-            .unwrap_or(axum::http::HeaderValue::from_static("")),
-    );
-    headers.insert(
-        "X-Cortiq-Complexity-Score",
-        axum::http::HeaderValue::from_str(&resp.cortiq.complexity_score.to_string())
-            .unwrap_or(axum::http::HeaderValue::from_static("0.0")),
-    );
-    headers.insert(
-        "X-Cortiq-Complexity-Tier",
-        axum::http::HeaderValue::from_str(&resp.cortiq.complexity_tier)
-            .unwrap_or(axum::http::HeaderValue::from_static("")),
-    );
-    headers.insert(
-        "X-Cortiq-Selected-Model",
-        axum::http::HeaderValue::from_str(&resp.cortiq.selected_model)
-            .unwrap_or(axum::http::HeaderValue::from_static("")),
-    );
-    headers.insert(
-        "X-Cortiq-Route-Source",
-        axum::http::HeaderValue::from_str(&resp.cortiq.route_source)
-            .unwrap_or(axum::http::HeaderValue::from_static("")),
-    );
-    headers.insert(
-        "X-Cortiq-Cost-Usd",
-        axum::http::HeaderValue::from_str(&resp.cortiq.cost_usd.to_string())
-            .unwrap_or(axum::http::HeaderValue::from_static("0.0")),
-    );
-    if let Some(req_id) = &resp.cortiq.router_request_id {
-        headers.insert(
-            "X-Cortiq-Request-Id",
-            axum::http::HeaderValue::from_str(req_id)
-                .unwrap_or(axum::http::HeaderValue::from_static("")),
-        );
-    }
+    let headers = cortiq_headers(&resp.cortiq);
 
     let mut body = serde_json::json!({
         "id": resp.id,
@@ -164,5 +161,5 @@ async fn handler(
         });
     }
 
-    Ok((headers, Json(body)))
+    Ok((headers, Json(body)).into_response())
 }

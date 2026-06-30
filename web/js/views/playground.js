@@ -1,7 +1,7 @@
 // Playground — send a prompt through the live pipeline, inspect routing decision.
-import { h, mount, money, ms, num } from "../ui.js";
+import { h, mount, money, ms } from "../ui.js";
 import { t } from "../i18n.js";
-import { api } from "../api.js";
+import { api, testStream } from "../api.js";
 import { appState } from "../app.js";
 
 export async function renderPlayground() {
@@ -16,6 +16,7 @@ export async function renderPlayground() {
   const promptIn = h("textarea", { placeholder: t("pg.promptPlaceholder"), rows: 5 });
   const tempIn = h("input", { type: "number", step: "0.1", value: 0.7 });
   const maxTokIn = h("input", { type: "number", value: 512 });
+  const streamCb = h("input", { type: "checkbox", checked: true });
   const profileSel = h("select", {}, ...(meta.profiles || []).map((p) => h("option", { value: p }, p)));
   const modelSel = h("select", {}, ...ids.map((id) => h("option", { value: id }, id)));
 
@@ -62,19 +63,43 @@ export async function renderPlayground() {
     sendBtn.disabled = true;
     sendBtn.textContent = t("pg.sending");
     mount(out, h("div", { class: "flex" }, h("span", { class: "spinner" }), " ", t("pg.sending")));
+    const body = {
+      model,
+      messages,
+      temperature: parseFloat(tempIn.value),
+      max_tokens: parseInt(maxTokIn.value) || null,
+    };
     try {
-      const r = await api.test({
-        model,
-        messages,
-        temperature: parseFloat(tempIn.value),
-        max_tokens: parseInt(maxTokIn.value) || null,
-      });
-      if (r.ok) {
-        mount(out, r.answer || h("span", { class: "muted" }, "—"));
-        renderDecision(r);
+      if (streamCb.checked) {
+        const started = performance.now();
+        let acc = "";
+        out.textContent = "";
+        const info = await testStream(body, (d) => {
+          acc += d;
+          out.textContent = acc;
+        });
+        out.textContent = acc || "—";
+        renderDecision({
+          cortiq: {
+            task_label: info.task_label,
+            complexity: { score: info.score, tier: info.tier },
+            selected_model: info.selected_model,
+            route_source: info.route_source,
+            cost_usd: info.cost_usd,
+            failover: false,
+          },
+          usage: {},
+          latency_ms: Math.round(performance.now() - started),
+        });
       } else {
-        mount(out, h("div", { class: "callout" }, h("b", {}, t("pg.error") + ": "), r.error || ""));
-        mount(decision, h("div", { class: "card-head" }, h("h3", {}, t("pg.decision"))), h("div", { class: "empty" }, "—"));
+        const r = await api.test(body);
+        if (r.ok) {
+          mount(out, r.answer || h("span", { class: "muted" }, "—"));
+          renderDecision(r);
+        } else {
+          mount(out, h("div", { class: "callout" }, h("b", {}, t("pg.error") + ": "), r.error || ""));
+          mount(decision, h("div", { class: "card-head" }, h("h3", {}, t("pg.decision"))), h("div", { class: "empty" }, "—"));
+        }
       }
     } catch (e) {
       mount(out, h("div", { class: "callout" }, String(e.message || e)));
@@ -126,7 +151,12 @@ export async function renderPlayground() {
           h("label", { class: "field" }, h("span", {}, t("pg.mode")), modeSeg),
           modeExtra,
           h("div", { class: "row" }, h("label", { class: "field" }, h("span", {}, t("pg.temp")), tempIn), h("label", { class: "field" }, h("span", {}, t("pg.maxTokens")), maxTokIn)),
-          h("div", { class: "flex", style: "justify-content:flex-end" }, sendBtn)
+          h(
+            "div",
+            { class: "flex", style: "justify-content:space-between" },
+            h("label", { class: "check", style: "margin:0" }, streamCb, t("pg.stream")),
+            sendBtn
+          )
         ),
         h("div", { class: "card" }, h("div", { class: "card-head" }, h("h3", {}, t("pg.answer"))), out)
       ),

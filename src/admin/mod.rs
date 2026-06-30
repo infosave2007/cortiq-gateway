@@ -165,6 +165,7 @@ pub fn api_routes(admin_token: String) -> Router<SharedState> {
         .route("/admin/api/stats", get(get_stats))
         .route("/admin/api/requests", get(get_requests))
         .route("/admin/api/test", post(run_test))
+        .route("/admin/api/test/stream", post(run_test_stream))
         .route_layer(middleware::from_fn(move |req: Request, next: Next| {
             let expected = admin_token.clone();
             async move { auth(expected, req, next).await }
@@ -751,5 +752,40 @@ async fn run_test(State(state): State<SharedState>, Json(b): Json<TestBody>) -> 
             }))
         }
         Err(e) => ok(json!({ "ok": false, "latency_ms": latency_ms, "error": e.to_string() })),
+    }
+}
+
+/// Streaming playground: forwards provider SSE chunks; routing decision is exposed
+/// via X-Cortiq-* response headers (the SPA reads them after the stream ends).
+async fn run_test_stream(State(state): State<SharedState>, Json(b): Json<TestBody>) -> Response {
+    if b.messages.is_empty() {
+        return ApiError::bad("messages must not be empty").into_response();
+    }
+    let req = ChatRequest {
+        routing: parse_routing(&b.model),
+        messages: b.messages,
+        tools: vec![],
+        params: GenParams {
+            temperature: b.temperature,
+            max_tokens: b.max_tokens,
+            ..Default::default()
+        },
+        stream: true,
+        meta: RequestMeta {
+            account: "playground".into(),
+            protocol: "playground".into(),
+            ..Default::default()
+        },
+    };
+    match state.pipeline.run_stream(req, &state).await {
+        Ok((info, stream)) => {
+            let mut headers = crate::protocols::openai_chat::cortiq_headers(&info);
+            headers.insert(
+                header::CONTENT_TYPE,
+                axum::http::HeaderValue::from_static("text/event-stream"),
+            );
+            (headers, axum::body::Body::from_stream(stream)).into_response()
+        }
+        Err(e) => ApiError::bad(e.to_string()).into_response(),
     }
 }

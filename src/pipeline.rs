@@ -79,9 +79,13 @@ impl Pipeline {
         result
     }
 
-    async fn run_inner(&self, req: ChatRequest, state: &SharedState) -> Result<ChatResponse> {
-        let live = state.live();
-
+    /// Stages 1–3: extract text → route → select & capability-filter candidates.
+    /// Shared by both the non-streaming and streaming paths.
+    async fn resolve(
+        &self,
+        req: &ChatRequest,
+        live: &crate::state::Live,
+    ) -> Result<(RouteDecision, String, Vec<String>)> {
         // 1. Extract text for classification
         let text = self.extract_text(
             &req.messages,
@@ -159,6 +163,12 @@ impl Pipeline {
                     .to_string(),
             ));
         }
+        Ok((decision, route_source, final_candidates))
+    }
+
+    async fn run_inner(&self, req: ChatRequest, state: &SharedState) -> Result<ChatResponse> {
+        let live = state.live();
+        let (decision, route_source, final_candidates) = self.resolve(&req, &live).await?;
 
         // 4. Attempt provider call with failover (fall back to alternatives on error)
         let mut last_err = None;
@@ -210,6 +220,89 @@ impl Pipeline {
         }))
     }
 
+    /// Streaming variant: returns the routing metadata plus a stream of SSE byte
+    /// chunks (OpenAI wire format). Failover applies only before the first byte —
+    /// once the upstream stream has started it cannot be retried. Statistics are
+    /// recorded when the stream completes (tokens taken from the final usage chunk).
+    pub async fn run_stream(
+        &self,
+        req: ChatRequest,
+        state: &SharedState,
+    ) -> Result<(RouteInfo, crate::providers::ChatStream)> {
+        let started = Instant::now();
+        let account = req.meta.account.clone();
+        let protocol = req.meta.protocol.clone();
+        let directive = match &req.routing {
+            RoutingDirective::Pinned { .. } => "pinned",
+            RoutingDirective::Auto { .. } => "auto",
+        }
+        .to_string();
+
+        let live = state.live();
+        let (decision, route_source, final_candidates) = match self.resolve(&req, &live).await {
+            Ok(t) => t,
+            Err(e) => {
+                record_error(state, &account, &protocol, &directive, started, &e);
+                return Err(e);
+            }
+        };
+
+        let mut last_err = None;
+        let mut attempt = 0usize;
+        for model_id in final_candidates {
+            let provider = match live.registry.get(&model_id) {
+                Some(p) => p,
+                None => continue,
+            };
+            tracing::info!(
+                "Streaming request (label: {}, tier: {}) to model '{}' via source '{}'",
+                decision.task_label,
+                decision.complexity_tier,
+                model_id,
+                route_source
+            );
+            match provider.chat_stream(req.clone()).await {
+                Ok(stream) => {
+                    let info = RouteInfo {
+                        task_label: decision.task_label.clone(),
+                        complexity_score: decision.complexity_score,
+                        complexity_tier: decision.complexity_tier.clone(),
+                        selected_model: model_id,
+                        route_source: route_source.clone(),
+                        router_request_id: decision.router_request_id.clone(),
+                        cost_usd: 0.0,
+                        failover: attempt > 0,
+                    };
+                    let tapped = tap_stream(
+                        stream,
+                        state.stats.clone(),
+                        provider.clone(),
+                        info.clone(),
+                        account,
+                        protocol,
+                        directive,
+                        started,
+                    );
+                    return Ok((info, Box::pin(tapped)));
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "Provider '{}' stream failed: {:?}. Attempting failover...",
+                        model_id,
+                        err
+                    );
+                    last_err = Some(err);
+                    attempt += 1;
+                }
+            }
+        }
+        let e = last_err.unwrap_or_else(|| {
+            GatewayError::UpstreamUnavailable("All candidate models failed".to_string())
+        });
+        record_error(state, &account, &protocol, &directive, started, &e);
+        Err(e)
+    }
+
     fn extract_text(&self, messages: &[Message], strategy: &str, max_chars: usize) -> String {
         let raw_text = match strategy {
             "last_user" => messages
@@ -247,5 +340,133 @@ impl Pipeline {
         } else {
             raw_text
         }
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn record_error(
+    state: &SharedState,
+    account: &str,
+    protocol: &str,
+    directive: &str,
+    started: Instant,
+    e: &GatewayError,
+) {
+    state.stats.record(RequestRecord {
+        ts: now_secs(),
+        account: account.to_string(),
+        protocol: protocol.to_string(),
+        directive: directive.to_string(),
+        task_label: String::new(),
+        tier: String::new(),
+        score: 0.0,
+        model_id: String::new(),
+        route_source: String::new(),
+        prompt_tokens: 0,
+        completion_tokens: 0,
+        cost_usd: 0.0,
+        latency_ms: started.elapsed().as_millis() as u64,
+        outcome: "error".to_string(),
+        failover: false,
+        error: Some(e.to_string()),
+    });
+}
+
+/// Forward a provider SSE stream to the client verbatim while tapping the final
+/// `usage` chunk; record statistics when the stream completes.
+#[allow(clippy::too_many_arguments)]
+fn tap_stream(
+    inner: crate::providers::ChatStream,
+    stats: std::sync::Arc<crate::stats::Stats>,
+    provider: std::sync::Arc<dyn crate::providers::Provider>,
+    info: RouteInfo,
+    account: String,
+    protocol: String,
+    directive: String,
+    started: Instant,
+) -> impl futures::Stream<Item = Result<bytes::Bytes>> {
+    use futures::StreamExt;
+    async_stream::stream! {
+        let mut inner = inner;
+        let mut buf = String::new();
+        let mut prompt_tokens = 0u32;
+        let mut completion_tokens = 0u32;
+        let mut got_usage = false;
+        let mut delta_chars = 0usize;
+        let mut errored: Option<String> = None;
+
+        while let Some(item) = inner.next().await {
+            match &item {
+                Ok(bytes) => {
+                    if let Ok(s) = std::str::from_utf8(bytes) {
+                        buf.push_str(s);
+                        while let Some(idx) = buf.find("\n\n") {
+                            let evt: String = buf.drain(..idx + 2).collect();
+                            for line in evt.lines() {
+                                if let Some(data) = line.trim_start().strip_prefix("data:") {
+                                    let data = data.trim();
+                                    if data.is_empty() || data == "[DONE]" {
+                                        continue;
+                                    }
+                                    if let Ok(v) =
+                                        serde_json::from_str::<serde_json::Value>(data)
+                                    {
+                                        let u = &v["usage"];
+                                        if !u.is_null() {
+                                            prompt_tokens = u["prompt_tokens"]
+                                                .as_u64()
+                                                .unwrap_or(prompt_tokens as u64)
+                                                as u32;
+                                            completion_tokens = u["completion_tokens"]
+                                                .as_u64()
+                                                .unwrap_or(completion_tokens as u64)
+                                                as u32;
+                                            got_usage = true;
+                                        }
+                                        if let Some(c) =
+                                            v["choices"][0]["delta"]["content"].as_str()
+                                        {
+                                            delta_chars += c.chars().count();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => errored = Some(e.to_string()),
+            }
+            yield item;
+        }
+
+        if !got_usage && completion_tokens == 0 {
+            // estimate when the server didn't return usage (~4 chars per token)
+            completion_tokens = (delta_chars / 4) as u32;
+        }
+        let cost = provider.price(prompt_tokens, completion_tokens);
+        stats.record(RequestRecord {
+            ts: now_secs(),
+            account,
+            protocol,
+            directive,
+            task_label: info.task_label.clone(),
+            tier: info.complexity_tier.clone(),
+            score: info.complexity_score,
+            model_id: info.selected_model.clone(),
+            route_source: info.route_source.clone(),
+            prompt_tokens,
+            completion_tokens,
+            cost_usd: cost,
+            latency_ms: started.elapsed().as_millis() as u64,
+            outcome: if errored.is_some() { "error" } else { "ok" }.to_string(),
+            failover: info.failover,
+            error: errored,
+        });
     }
 }

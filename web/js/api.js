@@ -91,3 +91,51 @@ export const api = {
   // playground
   test: (b) => j("POST", "/test", b),
 };
+
+// Streaming playground: POST /test/stream, calls onDelta(text) per content chunk,
+// returns the routing decision read from X-Cortiq-* response headers.
+export async function testStream(body, onDelta) {
+  const r = await fetch(BASE + "/test/stream", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + getToken(), "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (r.status === 401) {
+    if (onUnauthorized) onUnauthorized();
+    throw new Error("unauthorized");
+  }
+  if (!r.ok || !r.body) {
+    throw new Error((await r.text()) || r.statusText);
+  }
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const line = buf.slice(0, idx).split("\n").find((l) => l.startsWith("data:"));
+      buf = buf.slice(idx + 2);
+      if (!line) continue;
+      const data = line.slice(5).trim();
+      if (!data || data === "[DONE]") continue;
+      try {
+        const d = JSON.parse(data).choices?.[0]?.delta?.content;
+        if (d) onDelta(d);
+      } catch {
+        /* ignore malformed chunk */
+      }
+    }
+  }
+  const h = r.headers;
+  return {
+    task_label: h.get("x-cortiq-task-label") || "",
+    tier: h.get("x-cortiq-complexity-tier") || "",
+    score: parseFloat(h.get("x-cortiq-complexity-score") || "0"),
+    selected_model: h.get("x-cortiq-selected-model") || "",
+    route_source: h.get("x-cortiq-route-source") || "",
+    cost_usd: parseFloat(h.get("x-cortiq-cost-usd") || "0"),
+  };
+}

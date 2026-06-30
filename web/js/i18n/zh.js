@@ -200,6 +200,7 @@ export default {
   "pg.temp": "温度",
   "pg.maxTokens": "最大 Token 数",
   "pg.send": "发送",
+  "pg.stream": "流式",
   "pg.sending": "发送中…",
   "pg.answer": "回答",
   "pg.empty": "回答和路由决策将在此显示。",

@@ -200,6 +200,7 @@ export default {
   "pg.temp": "Sıcaklık",
   "pg.maxTokens": "Maks. token",
   "pg.send": "Gönder",
+  "pg.stream": "Akış",
   "pg.sending": "Gönderiliyor…",
   "pg.answer": "Yanıt",
   "pg.empty": "Yanıt ve yönlendirme kararı burada görünecek.",

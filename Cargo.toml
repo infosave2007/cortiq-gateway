@@ -48,6 +48,7 @@ getrandom = "0.2"
 # streaming / async utils
 futures = "0.3"
 async-trait = "0.1"
+async-stream = "0.3"
 bytes = "1"
 tokio-stream = "0.1"
 
