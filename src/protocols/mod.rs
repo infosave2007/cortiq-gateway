@@ -3,8 +3,11 @@
 
 pub mod anthropic_messages;
 pub mod mcp;
+pub mod native_passthrough;
 pub mod openai_chat;
+pub mod openai_completions;
 pub mod openai_embeddings;
+pub mod openai_models;
 
 use crate::state::SharedState;
 use axum::Router;
@@ -15,8 +18,10 @@ use axum::Router;
 pub fn build_router() -> Router<SharedState> {
     Router::new()
         .merge(openai_chat::routes())
+        .merge(openai_completions::routes())
         .merge(openai_embeddings::routes())
+        .merge(openai_models::routes())
         .merge(anthropic_messages::routes())
         .merge(mcp::routes())
-    // TODO: openai_completions, openai_models, native_passthrough.
+        .merge(native_passthrough::routes())
 }

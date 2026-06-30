@@ -3,6 +3,17 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.1] - 2026-06-30
+
+### Added
+- **OpenAI Models** (`GET /v1/models`): lists the pool + the virtual `cortiq-auto`.
+- **OpenAI Completions (legacy)** (`POST /v1/completions`): non-streaming and streaming
+  (`text_completion`), routed through the same pipeline.
+- **Native passthrough** (`POST /route`): returns the routing decision (task, complexity,
+  candidate models) without calling a model.
+
+All inbound protocol adapters are now implemented.
+
 ## [0.2.0] - 2026-06-30
 
 ### Added
