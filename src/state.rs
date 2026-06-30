@@ -5,6 +5,7 @@
 //! a restart: the admin API validates the new config, builds a new `Live`,
 //! atomically writes the TOML, and swaps the pointer.
 
+use crate::cache::SemanticCache;
 use crate::config::Config;
 use crate::registry::Registry;
 use crate::router_client::RouterClient;
@@ -42,6 +43,7 @@ impl Live {
 pub struct AppState {
     pub live: ArcSwap<Live>,
     pub stats: Arc<Stats>,
+    pub cache: Arc<SemanticCache>,
     pub secrets: SecretStore,
     pub config_path: String,
     pub pipeline: crate::pipeline::Pipeline,
@@ -59,10 +61,12 @@ impl SharedState {
         let secrets_path = sibling(&config_path, "secrets.toml");
         let secrets = SecretStore::load(&secrets_path);
         let stats = Stats::new(&cfg.stats);
+        let cache = SemanticCache::new(&cfg.cache);
         let live = Live::build(cfg, &secrets)?;
         Ok(SharedState(Arc::new(AppState {
             live: ArcSwap::from_pointee(live),
             stats,
+            cache,
             secrets,
             config_path,
             pipeline: crate::pipeline::Pipeline::new(),

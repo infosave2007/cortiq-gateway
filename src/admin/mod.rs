@@ -8,8 +8,8 @@
 pub mod assets;
 
 use crate::config::{
-    AdminCfg, ApiKeyCfg, BreakerCfg, Config, CortiqCfg, LogCfg, ModelCfg, ProtocolsCfg, RouteCfg,
-    RouterCfg, RoutingCfg, RoutingPolicy, StatsCfg, TelemetryCfg, TierTargets,
+    AdminCfg, ApiKeyCfg, BreakerCfg, CacheCfg, Config, CortiqCfg, LogCfg, ModelCfg, ProtocolsCfg,
+    RouteCfg, RouterCfg, RoutingCfg, RoutingPolicy, StatsCfg, TelemetryCfg, TierTargets,
 };
 use crate::model::{ChatRequest, GenParams, Message, RequestMeta, RoutingDirective};
 use crate::state::SharedState;
@@ -477,6 +477,7 @@ async fn get_settings(State(state): State<SharedState>) -> ApiResult {
         "cortiq": c.cortiq,
         "stats": c.stats,
         "admin": c.admin,
+        "cache": c.cache,
     }))
 }
 
@@ -491,6 +492,7 @@ struct SettingsBody {
     cortiq: Option<CortiqCfg>,
     stats: Option<StatsCfg>,
     admin: Option<AdminCfg>,
+    cache: Option<CacheCfg>,
 }
 
 async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBody>) -> ApiResult {
@@ -528,6 +530,11 @@ async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBo
             needs_restart = true;
         }
         cfg.admin = v;
+    }
+    if let Some(v) = b.cache {
+        // the cache is built at startup; persist now, apply on restart
+        needs_restart = true;
+        cfg.cache = v;
     }
     state.reload(cfg)?;
     ok(json!({ "ok": true, "needs_restart": needs_restart }))
@@ -666,7 +673,9 @@ async fn get_stats(State(state): State<SharedState>, Query(q): Query<StatsQuery>
         .and_then(parse_duration_secs)
         .unwrap_or(24 * 3600);
     let groupby = q.groupby.as_deref().unwrap_or("model");
-    ok(state.stats.snapshot(range_secs, groupby))
+    let mut snap = state.stats.snapshot(range_secs, groupby);
+    snap["cache"] = state.cache.snapshot();
+    ok(snap)
 }
 
 #[derive(Deserialize)]

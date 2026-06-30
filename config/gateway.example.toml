@@ -150,3 +150,15 @@ enabled   = true
 file      = "config/stats.jsonl"   # empty = in-memory only
 ring_size = 500                     # how many recent requests to keep in the feed
 retention = "7d"                    # aggregate/series depth (replayed on startup)
+
+# ============================================================================
+# Semantic cache — returns a cached answer for prompts semantically near a
+# previous one, skipping the model call. Requires an embedding model in the pool.
+# Disabled by default. (Cache settings take effect on restart.)
+# ============================================================================
+[cache]
+enabled     = false
+threshold   = 0.92                  # cosine similarity for a hit (0..1)
+ttl         = "1h"
+max_entries = 1000
+# embed_model = "local-embed"       # defaults to the first kind = "embedding" model
