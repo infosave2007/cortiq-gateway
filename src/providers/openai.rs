@@ -185,4 +185,30 @@ impl Provider for OpenAiProvider {
             .map(|res| res.map_err(|e| GatewayError::UpstreamUnavailable(e.to_string())));
         Ok(Box::pin(stream))
     }
+
+    async fn embed(&self, input: serde_json::Value) -> Result<serde_json::Value> {
+        let body = serde_json::json!({ "model": self.model, "input": input });
+        let mut r = self
+            .http
+            .post(format!("{}/embeddings", self.base_url))
+            .json(&body);
+        if let Some(key) = &self.api_key {
+            r = r.bearer_auth(key);
+        }
+        let resp = r
+            .send()
+            .await
+            .map_err(|e| GatewayError::UpstreamUnavailable(e.to_string()))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(GatewayError::UpstreamUnavailable(format!(
+                "provider {} returned HTTP {}: {}",
+                self.id, status, err_body
+            )));
+        }
+        resp.json().await.map_err(|e| {
+            GatewayError::Internal(format!("failed to parse embeddings response: {e}"))
+        })
+    }
 }

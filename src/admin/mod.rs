@@ -271,7 +271,7 @@ async fn meta() -> ApiResult {
     ok(json!({
         "version": env!("CARGO_PKG_VERSION"),
         "providers": ["openai", "anthropic", "ollama", "http"],
-        "provider_impl": { "openai": true, "ollama": true, "http": true, "anthropic": false },
+        "provider_impl": { "openai": true, "ollama": true, "http": true, "anthropic": true },
         "cost_tiers": ["cheap", "mid", "expensive"],
         "kinds": ["chat", "embedding"],
         "profiles": ["cost-saver", "balanced", "quality-first"],
@@ -280,8 +280,8 @@ async fn meta() -> ApiResult {
         "tiers": ["low", "medium", "high"],
         "caps": ["tools", "vision"],
         "protocols_impl": {
-            "openai_chat": true, "openai_completions": false, "openai_embeddings": false,
-            "openai_models": false, "anthropic_messages": false, "mcp": false, "native_passthrough": false
+            "openai_chat": true, "openai_completions": false, "openai_embeddings": true,
+            "openai_models": false, "anthropic_messages": true, "mcp": false, "native_passthrough": false
         },
         "languages": ["en", "ru", "de", "fr", "es", "zh", "tr"],
     }))

@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   byte. Live streaming output in the admin Playground (`/admin/api/test/stream`).
 - Cross-platform Windows binaries in releases (`x86_64-pc-windows-msvc`) and a
   cross-platform CI test matrix (ubuntu/windows/macos); secure token RNG via `getrandom`.
+- **Anthropic provider** (outbound): `POST /v1/messages` with `system` extraction,
+  `x-api-key` + `anthropic-version` headers, and streaming that translates Anthropic
+  SSE events into the unified OpenAI wire format.
+- **Anthropic inbound** adapter: `POST /v1/messages` (non-streaming JSON and streaming
+  SSE), so Claude-native clients can target the gateway.
+- **Embeddings**: `POST /v1/embeddings` inbound + provider `embed()`; embedding models
+  are now resolvable from the pool.
 
 ## [0.1.0] - 2026-06-30
 

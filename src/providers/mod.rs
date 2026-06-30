@@ -57,5 +57,13 @@ pub trait Provider: Send + Sync {
         )))
     }
 
-    // TODO(v0.2): async fn embed(...) -> Result<EmbedResponse>.
+    /// Embeddings call. `input` is the OpenAI `input` field (string or array of
+    /// strings); returns the provider's OpenAI-style embeddings response body.
+    /// Default: not supported (override per provider).
+    async fn embed(&self, _input: serde_json::Value) -> crate::error::Result<serde_json::Value> {
+        Err(GatewayError::UpstreamUnavailable(format!(
+            "embeddings are not supported by provider '{}'",
+            self.id()
+        )))
+    }
 }
