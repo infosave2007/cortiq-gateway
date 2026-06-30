@@ -15,9 +15,6 @@ impl Registry {
     pub fn from_config(cfg: &Config, secrets: &SecretStore) -> anyhow::Result<Self> {
         let mut by_id: HashMap<String, Arc<dyn Provider>> = HashMap::new();
         for m in &cfg.models {
-            if m.kind == "embedding" {
-                continue; // embedding models are handled by a separate branch (v0.1)
-            }
             // provider key: secret store → environment variable
             let api_key = m
                 .api_key_env
