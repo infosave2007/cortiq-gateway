@@ -1,0 +1,26 @@
+# Benchmark config: one model pinned to the mock upstream. Requests use
+# model="bench" (a real id) → direct passthrough, no router call — so we measure
+# pure proxy overhead, comparable to LiteLLM/Portkey passthrough.
+listen = "0.0.0.0:9100"
+
+[router]
+url = "http://127.0.0.1:8100"
+
+[[models]]
+id = "bench"
+provider = "openai"
+base_url = "http://127.0.0.1:8100/v1"
+model = "bench-model"
+
+[routing]
+default = "bench"
+
+[protocols]
+openai_chat = true
+
+[admin]
+enabled = false
+
+[stats]
+enabled = true
+file = ""
