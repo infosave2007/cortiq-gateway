@@ -280,8 +280,8 @@ async fn meta() -> ApiResult {
         "tiers": ["low", "medium", "high"],
         "caps": ["tools", "vision"],
         "protocols_impl": {
-            "openai_chat": true, "openai_completions": false, "openai_embeddings": true,
-            "openai_models": false, "anthropic_messages": true, "mcp": true, "native_passthrough": false
+            "openai_chat": true, "openai_completions": true, "openai_embeddings": true,
+            "openai_models": true, "anthropic_messages": true, "mcp": true, "native_passthrough": true
         },
         "languages": ["en", "ru", "de", "fr", "es", "zh", "tr"],
     }))

@@ -153,9 +153,9 @@ Each adapter is toggled in the config — take only what you need.
 | OpenAI Embeddings | `POST /v1/embeddings` | ✅ implemented |
 | Anthropic Messages | `POST /v1/messages` | ✅ implemented (+ streaming) |
 | MCP (Model Context Protocol) | `POST /mcp` (JSON-RPC) | ✅ implemented |
-| OpenAI Completions (legacy) | `POST /v1/completions` | planned |
-| OpenAI Models | `GET /v1/models` | planned |
-| Native passthrough | `POST /route` | planned |
+| OpenAI Completions (legacy) | `POST /v1/completions` | ✅ implemented (+ streaming) |
+| OpenAI Models | `GET /v1/models` | ✅ implemented |
+| Native passthrough | `POST /route` | ✅ implemented |
 
 ## Supported providers (outbound)
 
@@ -234,8 +234,7 @@ Implemented: OpenAI Chat Completions **with SSE streaming**, **Anthropic** provi
 inbound `/v1/messages` (streaming), **embeddings**, a **semantic cache**, **MCP** server,
 routing with fallback & graceful degradation, cost/token accounting, the **embedded
 multilingual admin console with hot config reload**, statistics and Prometheus
-`GET /metrics`. Planned: OpenAI Completions/Models, native passthrough, per-account
-routing, feedback loop. See the roadmap in
+`GET /metrics`. Planned: per-account routing tables, router feedback loop. See the roadmap in
 [docs/ARCHITECTURE.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/ARCHITECTURE.md).
 Contributions welcome — see [CONTRIBUTING.md](https://github.com/infosave2007/cortiq-gateway/blob/master/CONTRIBUTING.md).
 
