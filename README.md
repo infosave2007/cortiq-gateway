@@ -240,6 +240,22 @@ cargo build --release      # single self-contained binary (SPA embedded)
 cargo test                 # config round-trip, routing validation
 ```
 
+## ✅ Tested
+
+| Area | How it's verified | Status |
+|---|---|---|
+| Config load/save round-trip, routing validation | `cargo test` (unit) | ✅ |
+| Build · format · lint | CI: `cargo build` / `fmt --check` / `clippy -D warnings` on Linux · macOS · Windows | ✅ |
+| OpenAI Chat + SSE streaming | integration (mock upstream) | ✅ |
+| Anthropic Messages — in/out, streaming + non-streaming | integration (mock) | ✅ |
+| Embeddings (`POST /v1/embeddings`) | integration (mock) | ✅ |
+| Semantic cache — hit / miss / savings | integration (mock) | ✅ |
+| MCP — `initialize` / `tools/list` / `tools/call` | integration (mock) | ✅ |
+| Models · Completions · native `POST /route` | integration (mock) | ✅ |
+| Routing — auto / pinned / failover / degrade | integration (mock **and** live allaigate router) | ✅ |
+| Hot config reload (no restart) | integration | ✅ |
+| Latency benchmark vs LiteLLM / Portkey | `bench/run.sh` (Apache Bench) — see [BENCHMARKS.md](BENCHMARKS.md) | ✅ |
+
 ---
 
 ## Status
