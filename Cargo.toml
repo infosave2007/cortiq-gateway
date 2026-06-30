@@ -42,6 +42,9 @@ arc-swap = "1"
 rust-embed = "8"
 mime_guess = "2"
 
+# cross-platform CSPRNG for admin/key token generation (Linux/macOS/Windows)
+getrandom = "0.2"
+
 # streaming / async utils
 futures = "0.3"
 async-trait = "0.1"

@@ -73,12 +73,11 @@ fn current_cfg(state: &SharedState) -> Config {
 }
 
 /// Random hex token from `n_bytes` bytes of cryptographic randomness.
+/// Uses the OS CSPRNG via `getrandom` (works on Linux/macOS/Windows); falls back
+/// to a time-based generator only in the extremely unlikely event that fails.
 pub fn random_token(n_bytes: usize) -> String {
     let mut buf = vec![0u8; n_bytes];
-    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
-        use std::io::Read;
-        let _ = f.read_exact(&mut buf);
-    } else {
+    if getrandom::getrandom(&mut buf).is_err() {
         let t = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
