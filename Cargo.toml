@@ -1,13 +1,26 @@
 [package]
 name = "cortiq-gateway"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2021"
+rust-version = "1.75"
 license = "Apache-2.0"
-description = "Universal LLM gateway with intelligent routing via cortiq-router"
+description = "Universal LLM gateway with intelligent routing and an embedded multilingual admin console"
 repository = "https://github.com/infosave2007/cortiq-gateway"
+homepage = "https://api.allaigate.com"
 readme = "README.md"
 keywords = ["llm", "gateway", "proxy", "openai", "routing"]
-categories = ["web-programming::http-server"]
+categories = ["web-programming::http-server", "command-line-utilities"]
+# Files shipped in the published crate. The embedded admin SPA (web/) MUST be
+# included because rust-embed compiles it in; docs/screenshots are excluded to
+# keep the crate lean.
+include = [
+    "src/**/*",
+    "web/**/*",
+    "config/gateway.example.toml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+]
 
 [dependencies]
 # async runtime + HTTP server
