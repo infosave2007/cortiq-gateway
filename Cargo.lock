@@ -272,6 +272,7 @@ dependencies = [
  "bytes",
  "clap",
  "futures",
+ "getrandom 0.2.17",
  "mime_guess",
  "reqwest",
  "rust-embed",
