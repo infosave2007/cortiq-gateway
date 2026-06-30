@@ -1,0 +1,7 @@
+# Normalize line endings
+* text=auto eol=lf
+
+# The embedded admin SPA is first-party but ships as a UI asset; exclude it from
+# GitHub's language statistics so the repo is correctly identified as Rust.
+web/** linguist-vendored
+docs/screenshots/** linguist-vendored

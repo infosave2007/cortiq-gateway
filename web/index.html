@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>allaigate · Gateway Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <link rel="icon" type="image/svg+xml" href="/admin/favicon.svg" />
+  <link rel="stylesheet" href="/admin/css/styles.css" />
+  <script>
+    // apply saved theme early to avoid a flash of the wrong theme
+    try {
+      var th = localStorage.getItem("allaigate_theme") || "dark";
+      document.documentElement.setAttribute("data-theme", th);
+    } catch (e) {}
+  </script>
+</head>
+<body>
+  <noscript>This console requires JavaScript.</noscript>
+  <div id="app"><div class="boot">Loading…</div></div>
+  <div id="toasts" class="toasts"></div>
+  <script type="module" src="/admin/js/app.js"></script>
+</body>
+</html>
