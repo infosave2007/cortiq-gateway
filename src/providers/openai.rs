@@ -154,4 +154,35 @@ impl Provider for OpenAiProvider {
             },
         })
     }
+
+    async fn chat_stream(&self, req: ChatRequest) -> Result<super::ChatStream> {
+        use futures::StreamExt;
+        let mut body = self.to_wire(&req);
+        body["stream"] = serde_json::Value::Bool(true);
+        // ask OpenAI-compatible servers to include token usage in the final chunk
+        body["stream_options"] = serde_json::json!({ "include_usage": true });
+        let mut r = self
+            .http
+            .post(format!("{}/chat/completions", self.base_url))
+            .json(&body);
+        if let Some(key) = &self.api_key {
+            r = r.bearer_auth(key);
+        }
+        let resp = r
+            .send()
+            .await
+            .map_err(|e| GatewayError::UpstreamUnavailable(e.to_string()))?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let err_body = resp.text().await.unwrap_or_default();
+            return Err(GatewayError::UpstreamUnavailable(format!(
+                "provider {} returned HTTP {}: {}",
+                self.id, status, err_body
+            )));
+        }
+        let stream = resp
+            .bytes_stream()
+            .map(|res| res.map_err(|e| GatewayError::UpstreamUnavailable(e.to_string())));
+        Ok(Box::pin(stream))
+    }
 }

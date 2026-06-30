@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Streaming (SSE)** end-to-end: `POST /v1/chat/completions` with `"stream": true`
+  forwards provider SSE chunks verbatim, with `X-Cortiq-*` routing headers and token
+  usage tapped from the final chunk for statistics. Failover applies before the first
+  byte. Live streaming output in the admin Playground (`/admin/api/test/stream`).
+- Cross-platform Windows binaries in releases (`x86_64-pc-windows-msvc`) and a
+  cross-platform CI test matrix (ubuntu/windows/macos); secure token RNG via `getrandom`.
+
 ## [0.1.0] - 2026-06-30
 
 ### Added

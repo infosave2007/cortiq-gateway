@@ -200,6 +200,7 @@ export default {
   "pg.temp": "Температура",
   "pg.maxTokens": "Макс. токены",
   "pg.send": "Отправить",
+  "pg.stream": "Стриминг",
   "pg.sending": "Отправка…",
   "pg.answer": "Ответ",
   "pg.empty": "Ответ и решение роутера появятся здесь.",

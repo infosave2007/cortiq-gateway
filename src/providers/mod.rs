@@ -7,8 +7,16 @@
 pub mod anthropic;
 pub mod openai;
 
+use crate::error::GatewayError;
 use crate::model::{ChatRequest, ChatResponse};
 use async_trait::async_trait;
+use bytes::Bytes;
+use futures::stream::BoxStream;
+
+/// A streaming chat response: raw Server-Sent-Events byte chunks in OpenAI wire
+/// format (`data: {json}\n\n` … `data: [DONE]\n\n`). The gateway forwards these
+/// to the client verbatim while tapping the final `usage` for statistics.
+pub type ChatStream = BoxStream<'static, crate::error::Result<Bytes>>;
 
 /// Model capabilities — checked at selection time (whether tools/vision are needed).
 #[derive(Clone, Debug, Default)]
@@ -41,6 +49,13 @@ pub trait Provider: Send + Sync {
     /// Non-streaming chat call.
     async fn chat(&self, req: ChatRequest) -> crate::error::Result<ChatResponse>;
 
-    // TODO(v0.1): async fn chat_stream(...) -> Result<ChatStream> (SSE).
-    // TODO(v0.1): async fn embed(...) -> Result<EmbedResponse>.
+    /// Streaming chat call (SSE). Default: not supported (override per provider).
+    async fn chat_stream(&self, _req: ChatRequest) -> crate::error::Result<ChatStream> {
+        Err(GatewayError::UpstreamUnavailable(format!(
+            "streaming is not supported by provider '{}'",
+            self.id()
+        )))
+    }
+
+    // TODO(v0.2): async fn embed(...) -> Result<EmbedResponse>.
 }

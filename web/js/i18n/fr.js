@@ -200,6 +200,7 @@ export default {
   "pg.temp": "Température",
   "pg.maxTokens": "Tokens max",
   "pg.send": "Envoyer",
+  "pg.stream": "Streaming",
   "pg.sending": "Envoi…",
   "pg.answer": "Réponse",
   "pg.empty": "La réponse et la décision de routage s'afficheront ici.",
