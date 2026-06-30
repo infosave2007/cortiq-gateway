@@ -35,8 +35,10 @@ One OpenAI-compatible endpoint → automatic model selection from your pool
 
 ## ✨ Highlights
 
-- **Drop-in OpenAI API.** Point any OpenAI client at the gateway and send `model: "cortiq-auto"`.
+- **Drop-in OpenAI API + streaming.** Point any OpenAI client at the gateway and send `model: "cortiq-auto"`; `stream: true` is fully supported (SSE).
+- **Multi-protocol.** OpenAI Chat & Embeddings, **Anthropic Messages** (in/out, streaming), and an **MCP** server (`POST /mcp`) exposing routing as tools for agent orchestrators.
 - **Intelligent routing.** `complexity.tier` → ordered model pool (`low → local`, `high → cloud`), with fallback and graceful degradation when the router is down.
+- **Semantic cache.** Optional embedding-based cache returns a stored answer for prompts semantically near a previous one — skipping the model call (hit-rate & savings on the dashboard).
 - **Built-in multilingual admin console.** Manage models, routing, protocols, keys and secrets from a web UI — **no hand-editing TOML, no restart** (changes are hot-reloaded). Available in **7 languages** (en, ru, de, fr, es, zh, tr) with light/dark themes.
 - **Live analytics.** Per-request stats (tokens, cost, latency, success rate, failovers), time-series charts, breakdowns by model/tier/task, and a Prometheus `GET /metrics` endpoint.
 - **Playground.** Send a prompt through the live pipeline and inspect the routing decision.
@@ -147,12 +149,12 @@ Each adapter is toggled in the config — take only what you need.
 
 | Protocol | Endpoint | Status |
 |---|---|---|
-| OpenAI Chat Completions | `POST /v1/chat/completions` | ✅ implemented |
+| OpenAI Chat Completions | `POST /v1/chat/completions` | ✅ implemented (+ streaming) |
+| OpenAI Embeddings | `POST /v1/embeddings` | ✅ implemented |
+| Anthropic Messages | `POST /v1/messages` | ✅ implemented (+ streaming) |
+| MCP (Model Context Protocol) | `POST /mcp` (JSON-RPC) | ✅ implemented |
 | OpenAI Completions (legacy) | `POST /v1/completions` | planned |
-| OpenAI Embeddings | `POST /v1/embeddings` | planned |
 | OpenAI Models | `GET /v1/models` | planned |
-| Anthropic Messages | `POST /v1/messages` | planned |
-| MCP (Model Context Protocol) | JSON-RPC / SSE | planned |
 | Native passthrough | `POST /route` | planned |
 
 ## Supported providers (outbound)
@@ -160,7 +162,7 @@ Each adapter is toggled in the config — take only what you need.
 | Provider | Covers |
 |---|---|
 | `openai` (OpenAI-compatible) | OpenAI, OpenRouter, Together, Groq, **vLLM, llama.cpp server, LM Studio, Ollama (`/v1`)** |
-| `anthropic` | Claude Messages API (planned) |
+| `anthropic` | Claude Messages API (+ streaming) |
 | `ollama` | native Ollama API |
 | `http` | arbitrary HTTP endpoint (custom adapter) |
 
@@ -228,10 +230,12 @@ cargo test                 # config round-trip, routing validation
 
 ## Status
 
-🚧 Implemented so far: OpenAI Chat Completions, routing with fallback & graceful
-degradation, cost/token accounting, the **embedded multilingual admin console with
-hot config reload**, statistics and Prometheus `GET /metrics`. Planned: streaming
-(SSE), Anthropic provider/inbound, embeddings, MCP. See the roadmap in
+Implemented: OpenAI Chat Completions **with SSE streaming**, **Anthropic** provider +
+inbound `/v1/messages` (streaming), **embeddings**, a **semantic cache**, **MCP** server,
+routing with fallback & graceful degradation, cost/token accounting, the **embedded
+multilingual admin console with hot config reload**, statistics and Prometheus
+`GET /metrics`. Planned: OpenAI Completions/Models, native passthrough, per-account
+routing, feedback loop. See the roadmap in
 [docs/ARCHITECTURE.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/ARCHITECTURE.md).
 Contributions welcome — see [CONTRIBUTING.md](https://github.com/infosave2007/cortiq-gateway/blob/master/CONTRIBUTING.md).
 

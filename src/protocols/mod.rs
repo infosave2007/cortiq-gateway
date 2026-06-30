@@ -2,6 +2,7 @@
 //! its protocol to/from the canonical model. Enabled via flags in `[protocols]`.
 
 pub mod anthropic_messages;
+pub mod mcp;
 pub mod openai_chat;
 pub mod openai_embeddings;
 
@@ -16,5 +17,6 @@ pub fn build_router() -> Router<SharedState> {
         .merge(openai_chat::routes())
         .merge(openai_embeddings::routes())
         .merge(anthropic_messages::routes())
-    // TODO: openai_completions, openai_models, mcp, native_passthrough.
+        .merge(mcp::routes())
+    // TODO: openai_completions, openai_models, native_passthrough.
 }
