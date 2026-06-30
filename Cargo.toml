@@ -1,0 +1,49 @@
+[package]
+name = "cortiq-gateway"
+version = "0.0.1"
+edition = "2021"
+license = "Apache-2.0"
+description = "Universal LLM gateway with intelligent routing via cortiq-router"
+repository = "https://github.com/infosave2007/cortiq-gateway"
+readme = "README.md"
+keywords = ["llm", "gateway", "proxy", "openai", "routing"]
+categories = ["web-programming::http-server"]
+
+[dependencies]
+# async runtime + HTTP server
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["macros"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["limit", "trace", "cors"] }
+
+# HTTP client to providers and to cortiq-router (rustls, no OpenSSL)
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+
+# serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# hot-reloadable shared state + embedded admin SPA
+arc-swap = "1"
+rust-embed = "8"
+mime_guess = "2"
+
+# streaming / async utils
+futures = "0.3"
+async-trait = "0.1"
+bytes = "1"
+tokio-stream = "0.1"
+
+# CLI / config
+clap = { version = "4", features = ["derive"] }
+
+# errors / logging / metrics
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[profile.release]
+lto = true
+codegen-units = 1

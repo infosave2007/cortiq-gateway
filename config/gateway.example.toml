@@ -1,0 +1,152 @@
+# ============================================================================
+# Cortiq Gateway — example configuration
+# Copy to gateway.toml and edit for your own model pool.
+# Do NOT store secrets here — provide them via *_env (environment variables)
+# or set them from the admin console (stored in config/secrets.toml).
+# ============================================================================
+
+listen = "0.0.0.0:9000"
+
+# --- connection to cortiq-router (decides task type / complexity) -----------
+# Hosted allaigate router: url = "https://138.226.222.209", verify_tls = false
+# (cert is bound to an IP), taxonomy_id = "data-assistant", a cortiq_… key in
+# CORTIQ_ROUTER_KEY.
+# NOTE: on hard prompts the router escalates to an oracle LLM (~10 s) — for the
+# hosted router set timeout_ms = 12000+, otherwise the gateway degrades to default.
+[router]
+url         = "http://localhost:8080"
+api_key_env = "CORTIQ_ROUTER_KEY"   # name of the env var holding the router key
+timeout_ms  = 800                    # timeout for the /v1/route call (12000+ for oracle)
+taxonomy_id = "general.task-type"    # for allaigate: "data-assistant"
+verify_tls  = true                   # false if the router uses an IP / self-signed cert
+
+# --- how to pick the text to classify from the conversation -----------------
+[route]
+text_strategy = "last_user"   # last_user | last_user_plus_system | concat_all
+max_chars     = 4000
+cache_ttl     = "60s"
+profile       = "balanced"    # cost-saver | balanced | quality-first
+
+# ============================================================================
+# Model pool: mix cheap local models and expensive cloud ones.
+# provider = "openai" covers OpenAI, OpenRouter, Together, Groq, and also
+# LOCAL servers vLLM / llama.cpp / LM Studio / Ollama (/v1).
+# ============================================================================
+
+[[models]]
+id        = "local-qwen"
+provider  = "openai"
+base_url  = "http://localhost:8000/v1"
+model     = "qwen2.5-7b-instruct"
+cost_tier = "cheap"
+price_in  = 0.0
+price_out = 0.0
+caps      = ["tools"]
+
+[[models]]
+id          = "gpt-4o-mini"
+provider    = "openai"
+base_url    = "https://api.openai.com/v1"
+model       = "gpt-4o-mini"
+api_key_env = "OPENAI_API_KEY"
+cost_tier   = "mid"
+price_in    = 0.15
+price_out   = 0.60
+caps        = ["tools", "vision"]
+
+[[models]]
+id          = "claude-opus"
+provider    = "anthropic"
+base_url    = "https://api.anthropic.com"
+model       = "claude-opus-4"
+api_key_env = "ANTHROPIC_API_KEY"
+cost_tier   = "expensive"
+price_in    = 15.0
+price_out   = 75.0
+caps        = ["tools", "vision"]
+
+# --- embedding model (for /v1/embeddings in provider mode) ------------------
+[[models]]
+id          = "local-embed"
+provider    = "openai"
+base_url    = "http://localhost:8000/v1"
+model       = "nomic-embed-text"
+cost_tier   = "cheap"
+kind        = "embedding"
+
+# ============================================================================
+# Routing table: complexity tier → ordered pool (priority = fallback chain)
+# ============================================================================
+[routing]
+low     = ["local-qwen"]
+medium  = ["gpt-4o-mini", "local-qwen"]
+high    = ["claude-opus", "gpt-4o-mini"]
+default = "gpt-4o-mini"        # used when the router is unreachable
+
+[routing.policy]
+mode = "fixed_table"           # fixed_table | cost_aware
+# for cost_aware:
+# min_class = { low = "cheap", medium = "mid", high = "expensive" }
+# max_cost_usd_per_request = 0.50
+
+# --- resilience -------------------------------------------------------------
+[breaker]
+threshold = 5
+cooldown  = "30s"
+
+# ============================================================================
+# Inbound protocols — enable only what you need (toggles apply live in the UI)
+# ============================================================================
+[protocols]
+openai_chat        = true
+openai_completions = true
+openai_embeddings  = true
+openai_models      = true
+anthropic_messages = false
+mcp                = false
+native_passthrough = true
+
+# --- response routing metadata ----------------------------------------------
+[cortiq]
+echo = true     # add a "cortiq" field to the response body (X-Cortiq-* headers are always sent)
+
+# ============================================================================
+# Authentication: virtual gateway keys (agents get these, not provider keys).
+# If this section is empty, the gateway runs in open mode (local development).
+# ============================================================================
+[[api_keys]]
+key          = "sk-gw-team-a"
+account      = "team-a"
+rate_per_min = 600
+# allow_models = ["cortiq-auto", "local-qwen"]   # restrict available models (optional)
+
+# --- idempotency and logging ------------------------------------------------
+[idempotency]
+ttl = "10m"
+
+[log]
+bodies = false   # do NOT log message bodies (privacy) — default
+level  = "info"
+
+[telemetry]
+metrics = true   # GET /metrics (Prometheus)
+otlp_endpoint_env = "OTEL_EXPORTER_OTLP_ENDPOINT"   # optional
+
+# ============================================================================
+# Admin web console — embedded in the binary, served at /admin
+# ============================================================================
+[admin]
+enabled   = true
+# Name of the env var holding the admin token. If unset (or empty), a token is
+# generated at startup and printed to the log (see also the --admin-token flag).
+token_env = "CORTIQ_ADMIN_TOKEN"
+# listen  = "127.0.0.1:9001"   # optional: separate bind for admin (default: main listen)
+
+# ============================================================================
+# Request statistics (dashboard + /metrics). Kept in memory + appended to JSONL.
+# ============================================================================
+[stats]
+enabled   = true
+file      = "config/stats.jsonl"   # empty = in-memory only
+ring_size = 500                     # how many recent requests to keep in the feed
+retention = "7d"                    # aggregate/series depth (replayed on startup)

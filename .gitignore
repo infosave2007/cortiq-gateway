@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+# Cargo.lock is committed: this is an application (binary), so we want reproducible builds.
+config/gateway.toml
+config/secrets.toml
+config/stats.jsonl
+config/*.toml.tmp
+.env
+*.log
+.DS_Store
