@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.0] - 2026-06-30
 
 ### Added
 - **Streaming (SSE)** end-to-end: `POST /v1/chat/completions` with `"stream": true`
