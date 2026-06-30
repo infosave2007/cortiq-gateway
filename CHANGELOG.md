@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.1.0] - 2026-06-30
 
 ### Added
 - **Embedded admin web console** at `/admin` — a build-free single-page app compiled

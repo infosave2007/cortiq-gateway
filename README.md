@@ -1,10 +1,11 @@
 # Cortiq Gateway
 
-**English** · [Русский](README.ru.md)
+**English** · [Русский](https://github.com/infosave2007/cortiq-gateway/blob/master/README.ru.md)
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![Crates.io](https://img.shields.io/crates/v/cortiq-gateway.svg)](https://crates.io/crates/cortiq-gateway)
+[![CI](https://github.com/infosave2007/cortiq-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/infosave2007/cortiq-gateway/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/infosave2007/cortiq-gateway/blob/master/LICENSE)
 ![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)
-![Status](https://img.shields.io/badge/status-active-success.svg)
 
 **A universal LLM gateway with intelligent routing.**
 One OpenAI-compatible endpoint → automatic model selection from your pool
@@ -44,18 +45,35 @@ One OpenAI-compatible endpoint → automatic model selection from your pool
 
 ---
 
+## 📦 Install
+
+```bash
+# from crates.io
+cargo install cortiq-gateway
+
+# or build from source
+git clone https://github.com/infosave2007/cortiq-gateway
+cd cortiq-gateway
+cargo build --release   # ./target/release/cortiq-gateway
+```
+
+---
+
 ## 🖥️ Admin console
 
-![Dashboard](docs/screenshots/dashboard.png)
+![Dashboard](https://raw.githubusercontent.com/infosave2007/cortiq-gateway/master/docs/screenshots/dashboard.png)
 
 The gateway ships with an embedded web console at **`/admin`**:
 
-| | |
+| Models | Routing |
 |---|---|
-| ![Models](docs/screenshots/models.png) | ![Routing](docs/screenshots/routing.png) |
-| **Models** — add/edit/probe models, manage provider keys | **Routing** — visual tier editor (ordered, drag-to-reorder) |
-| ![Playground](docs/screenshots/playground.png) | ![Dashboard](docs/screenshots/dashboard.png) |
-| **Playground** — test the live pipeline, see the decision | **Dashboard** — traffic, cost, latency analytics |
+| ![Models](https://raw.githubusercontent.com/infosave2007/cortiq-gateway/master/docs/screenshots/models.png) | ![Routing](https://raw.githubusercontent.com/infosave2007/cortiq-gateway/master/docs/screenshots/routing.png) |
+| add/edit/probe models, manage provider keys | visual tier editor (ordered, reorderable) |
+
+| Playground |
+|---|
+| ![Playground](https://raw.githubusercontent.com/infosave2007/cortiq-gateway/master/docs/screenshots/playground.png) |
+| test the live pipeline and see the routing decision |
 
 ```bash
 cargo run --release -- --config config/gateway.toml --admin-token <YOUR_TOKEN>
@@ -79,7 +97,7 @@ cp config/gateway.example.toml config/gateway.toml
 $EDITOR config/gateway.toml
 
 # 3. run the gateway
-cargo run --release -- --config config/gateway.toml
+cortiq-gateway --config config/gateway.toml
 # Gateway listens on 0.0.0.0:9000 and serves the admin console at /admin
 ```
 
@@ -113,13 +131,13 @@ print(resp.choices[0].message.content)
 ## Request flow
 
 1. Client → `POST /v1/chat/completions` (or Anthropic/MCP) with `model: "cortiq-auto"`.
-2. The gateway extracts the **text to route on** (strategy is configurable, see [docs/ROUTING.md](docs/ROUTING.md)).
+2. The gateway extracts the **text to route on** (strategy is configurable, see [docs/ROUTING.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/ROUTING.md)).
 3. Gateway → `cortiq-router /v1/route` → gets `task_label` + `complexity.tier`.
 4. Gateway selects a model from the pool via the routing table (with a fallback order).
 5. Gateway → the selected model's provider (translating the protocol if needed), returns the response.
 6. Gateway attaches routing metadata in headers/`usage` and records cost & statistics.
 
-Details — [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Details — [docs/ARCHITECTURE.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/ARCHITECTURE.md).
 
 ---
 
@@ -181,8 +199,8 @@ high    = ["claude-opus", "local-qwen"]
 default = "local-qwen"
 ```
 
-Full example — [config/gateway.example.toml](config/gateway.example.toml).
-Routing & cost-aware selection — [docs/ROUTING.md](docs/ROUTING.md).
+Full example — [config/gateway.example.toml](https://github.com/infosave2007/cortiq-gateway/blob/master/config/gateway.example.toml).
+Routing & cost-aware selection — [docs/ROUTING.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/ROUTING.md).
 Everything in the config is also editable from the admin console at runtime.
 
 ---
@@ -195,7 +213,7 @@ Everything in the config is also editable from the admin console at runtime.
 - **Cost accounting:** token usage + USD cost and the selected model.
 - **Observability:** `GET /metrics` (Prometheus), `GET /healthz`, `GET /readyz`.
 
-Details — [docs/PROTOCOLS.md](docs/PROTOCOLS.md).
+Details — [docs/PROTOCOLS.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/PROTOCOLS.md).
 
 ---
 
@@ -214,9 +232,9 @@ cargo test                 # config round-trip, routing validation
 degradation, cost/token accounting, the **embedded multilingual admin console with
 hot config reload**, statistics and Prometheus `GET /metrics`. Planned: streaming
 (SSE), Anthropic provider/inbound, embeddings, MCP. See the roadmap in
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Contributions welcome — see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[docs/ARCHITECTURE.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/ARCHITECTURE.md).
+Contributions welcome — see [CONTRIBUTING.md](https://github.com/infosave2007/cortiq-gateway/blob/master/CONTRIBUTING.md).
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](https://github.com/infosave2007/cortiq-gateway/blob/master/LICENSE).
