@@ -35,6 +35,7 @@ One OpenAI-compatible endpoint → automatic model selection from your pool
 
 ## ✨ Highlights
 
+- **Fast.** Rust/Tokio: **sub-millisecond p99** gateway overhead — ~10× the throughput of Portkey and ~47× of LiteLLM in a like-for-like proxy benchmark ([details](BENCHMARKS.md)).
 - **Drop-in OpenAI API + streaming.** Point any OpenAI client at the gateway and send `model: "cortiq-auto"`; `stream: true` is fully supported (SSE).
 - **Multi-protocol.** OpenAI Chat & Embeddings, **Anthropic Messages** (in/out, streaming), and an **MCP** server (`POST /mcp`) exposing routing as tools for agent orchestrators.
 - **Intelligent routing.** `complexity.tier` → ordered model pool (`low → local`, `high → cloud`), with fallback and graceful degradation when the router is down.
@@ -218,6 +219,19 @@ Everything in the config is also editable from the admin console at runtime.
 Details — [docs/PROTOCOLS.md](https://github.com/infosave2007/cortiq-gateway/blob/master/docs/PROTOCOLS.md).
 
 ---
+
+## ⚡ Performance
+
+Gateway overhead proxying the same instant backend, `ab -k -r -c 20 -n 5000`:
+
+| Gateway | req/s | p50 | p99 |
+|---|--:|--:|--:|
+| **Cortiq Gateway** (Rust) | **~57,300** | 0 ms | **1 ms** |
+| Portkey (Node) | ~5,800 | 3 ms | 9 ms |
+| LiteLLM (Python, 4 workers) | ~1,200 | 9 ms | 59 ms |
+
+Methodology, caveats and a reproducible harness: **[BENCHMARKS.md](BENCHMARKS.md)**
+(`bash bench/run.sh`). Numbers vary by hardware; the ratios are the point.
 
 ## Build & test
 

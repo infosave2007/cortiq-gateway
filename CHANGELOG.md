@@ -3,6 +3,13 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Latency benchmark** vs LiteLLM and Portkey: a reproducible harness (`bench/`,
+  instant mock backend + Apache Bench) and `BENCHMARKS.md`. Measured gateway overhead:
+  Cortiq ~57k req/s / p99 1 ms vs Portkey ~5.8k / p99 9 ms vs LiteLLM ~1.2k / p99 59 ms.
+
 ## [0.2.1] - 2026-06-30
 
 ### Added
