@@ -44,6 +44,20 @@
 
 ---
 
+## 📦 Установка
+
+```bash
+# с crates.io
+cargo install cortiq-gateway
+
+# или сборка из исходников
+git clone https://github.com/infosave2007/cortiq-gateway
+cd cortiq-gateway
+cargo build --release   # ./target/release/cortiq-gateway
+```
+
+---
+
 ## 🖥️ Панель управления
 
 ![Дашборд](docs/screenshots/dashboard.png)
