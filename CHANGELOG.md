@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Accuracy benchmark**: task-type routing on natural-language prompts (`bench/accuracy.py`,
   `bench/tasks.jsonl`) — allaigate semantic router 100% (37/37) vs a keyword heuristic 32%
   (competitors have no semantic task router).
+- **Router docs** (`docs/ROUTER.md` + `.ru.md`): what the allaigate/cortiq-router does, how
+  to point the gateway at it, API contract, pricing, and the current `LAUNCH1` $1 promo.
 
 ## [0.2.1] - 2026-06-30
 

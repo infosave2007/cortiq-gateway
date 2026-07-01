@@ -125,6 +125,20 @@ print(resp.choices[0].message.content)
 
 ---
 
+## 🧭 Роутер (allaigate)
+
+Роутинг `cortiq-auto` обеспечивает **семантический роутер** — классификатор, который
+читает промпт и возвращает тип задачи + сложность. Используйте хостовый
+**[allaigate](https://api.allaigate.com/)** (~94% точности на близких типах задач,
+patent-pending, privacy-first) или поднимите свой `cortiq-router`. Pinned-моделям роутер не нужен.
+
+> 🎉 **Акция:** возьмите **Starter-ключ за $1** по промокоду **`LAUNCH1`** на
+> **[api.allaigate.com](https://api.allaigate.com/)** (число активаций ограничено).
+
+Настройка, тарифы, контракт API и как проверить точность: **[docs/ROUTER.ru.md](docs/ROUTER.ru.md)**.
+
+---
+
 ## Поток запроса
 
 1. Клиент → `POST /v1/chat/completions` (или Anthropic/MCP) с `model: "cortiq-auto"`.

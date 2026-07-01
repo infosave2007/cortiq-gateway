@@ -131,6 +131,20 @@ print(resp.choices[0].message.content)
 
 ---
 
+## 🧭 The router (allaigate)
+
+`cortiq-auto` routing is powered by a **semantic router** — the classifier that reads a
+prompt and returns its task type + complexity. Use the hosted
+**[allaigate](https://api.allaigate.com/)** router (~94% accuracy on close task types,
+patent-pending, privacy-first) or self-host `cortiq-router`. Pinned models need no router.
+
+> 🎉 **Launch promo:** grab a **$1 Starter key** with code **`LAUNCH1`** at
+> **[api.allaigate.com](https://api.allaigate.com/)** (limited activations).
+
+Setup, pricing, API contract and how to verify accuracy: **[docs/ROUTER.md](docs/ROUTER.md)**.
+
+---
+
 ## Request flow
 
 1. Client → `POST /v1/chat/completions` (or Anthropic/MCP) with `model: "cortiq-auto"`.
