@@ -1,0 +1,33 @@
+# Quick start: Cortiq Gateway + a local model (Ollama).
+#
+#   docker compose up -d
+#   docker compose exec ollama ollama pull qwen2.5:0.5b   # pull the model once
+#   # → OpenAI-compatible API at http://localhost:9000/v1
+#   # → admin console at   http://localhost:9000/admin  (token: change-me)
+#
+# For smart routing, add a [router] key to config/gateway.compose.toml
+# (or set CORTIQ_ROUTER_KEY and point [router] at allaigate — see docs/ROUTER.md).
+services:
+  gateway:
+    image: ghcr.io/infosave2007/cortiq-gateway:latest
+    ports:
+      - "9000:9000"
+    environment:
+      CORTIQ_ADMIN_TOKEN: change-me
+      CORTIQ_ROUTER_KEY: ${CORTIQ_ROUTER_KEY:-}
+    volumes:
+      - ./config/gateway.compose.toml:/app/config/gateway.toml:ro
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama:

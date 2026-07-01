@@ -1,0 +1,27 @@
+# Config used by docker-compose.yml — routes to the Ollama service in the same
+# compose network. Send model="local" (pinned) or "cortiq-auto" (falls back to the
+# default model when no router is configured). Add a [router] key to enable smart routing.
+listen = "0.0.0.0:9000"
+
+[router]
+url        = "http://localhost:8080"   # optional; pinned/default works without a router
+timeout_ms = 800
+
+[[models]]
+id       = "local"
+provider = "openai"
+base_url = "http://ollama:11434/v1"    # the Ollama service (see docker-compose.yml)
+model    = "qwen2.5:0.5b"
+cost_tier = "cheap"
+
+[routing]
+default = "local"
+
+[protocols]
+openai_chat = true
+
+[admin]
+enabled = true
+
+[telemetry]
+metrics = true

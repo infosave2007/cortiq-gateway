@@ -2,6 +2,8 @@
 
 [English](README.md) · **Русский**
 
+[![Crates.io](https://img.shields.io/crates/v/cortiq-gateway.svg)](https://crates.io/crates/cortiq-gateway)
+[![Docker](https://img.shields.io/badge/ghcr.io-cortiq--gateway-2496ED?logo=docker&logoColor=white)](https://github.com/infosave2007/cortiq-gateway/pkgs/container/cortiq-gateway)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 ![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
@@ -65,6 +67,17 @@ cargo build --release   # ./target/release/cortiq-gateway
 Образ идёт с дефолтным конфигом и работает из коробки; смонтируйте `/app/config`
 (с `gateway.toml`), чтобы использовать свой. Теги: `:latest`, `:X.Y.Z`, `:edge`
 (linux/amd64 + arm64).
+
+**Docker Compose** — шлюз + локальная модель Ollama одной командой:
+
+```bash
+docker compose up -d
+docker compose exec ollama ollama pull qwen2.5:0.5b   # один раз скачать модель
+# → OpenAI API на http://localhost:9000/v1 · панель на /admin (токен: change-me)
+```
+
+См. [`docker-compose.yml`](docker-compose.yml). Для умного роутинга задайте
+`CORTIQ_ROUTER_KEY` и добавьте `[router]` (см. [docs/ROUTER.ru.md](docs/ROUTER.ru.md)).
 
 ---
 
