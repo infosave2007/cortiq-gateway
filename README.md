@@ -51,6 +51,11 @@ One OpenAI-compatible endpoint → automatic model selection from your pool
 ## 📦 Install
 
 ```bash
+# Docker (GitHub Container Registry)
+docker run -p 9000:9000 -e CORTIQ_ADMIN_TOKEN=secret \
+  -v "$PWD/config:/app/config" ghcr.io/infosave2007/cortiq-gateway:latest
+# → admin console at http://localhost:9000/admin
+
 # from crates.io
 cargo install cortiq-gateway
 
@@ -59,6 +64,9 @@ git clone https://github.com/infosave2007/cortiq-gateway
 cd cortiq-gateway
 cargo build --release   # ./target/release/cortiq-gateway
 ```
+
+The image ships a default config and runs out of the box; mount `/app/config` (with a
+`gateway.toml`) to use your own. Tags: `:latest`, `:X.Y.Z`, `:edge` (linux/amd64 + arm64).
 
 ---
 

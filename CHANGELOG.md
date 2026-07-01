@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
   (competitors have no semantic task router).
 - **Router docs** (`docs/ROUTER.md` + `.ru.md`): what the allaigate/cortiq-router does, how
   to point the gateway at it, API contract, pricing, and the current `LAUNCH1` $1 promo.
+- **Docker image**: multi-stage `Dockerfile` (non-root, ~160 MB) + `docker.yml` workflow
+  publishing to `ghcr.io/infosave2007/cortiq-gateway` (`:latest`, `:X.Y.Z`, `:edge`;
+  linux/amd64 + arm64 on release tags). `docker run` works out of the box.
 
 ## [0.2.1] - 2026-06-30
 
