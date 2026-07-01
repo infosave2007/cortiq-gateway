@@ -91,6 +91,13 @@ else
   echo "portkey           | (not installed — npm i -g @portkey-ai/gateway)"
 fi
 
+# --- task-type routing accuracy (optional; needs a live router key) ----------
+if [ -n "${CORTIQ_ROUTER_KEY:-}" ]; then
+  echo
+  echo "== task-type routing accuracy (allaigate router vs keyword heuristic) =="
+  python3 "$HERE/accuracy.py"
+fi
+
 echo
-echo "Note: numbers are gateway overhead over a zero-latency mock on one machine;"
-echo "subtract mock-direct to isolate proxy cost. Re-run on your own hardware."
+echo "Note: latency numbers are gateway overhead over a zero-latency mock on one"
+echo "machine; subtract mock-direct to isolate proxy cost. Re-run on your hardware."

@@ -1,0 +1,37 @@
+{"text": "Write a Python function to reverse a string", "label": "code"}
+{"text": "Reverse a linked list in place", "label": "code"}
+{"text": "Given an array of integers, return the indices of the two that add up to a target", "label": "code"}
+{"text": "My loop prints one extra line at the end — what's wrong with it?", "label": "code"}
+{"text": "Merge two sorted arrays into a single sorted array", "label": "code"}
+{"text": "Make this faster: it compares every element with every other element", "label": "code"}
+{"text": "Solve x^2 - 5x + 6 = 0", "label": "math"}
+{"text": "If a train covers 60 miles in 1.5 hours, how fast is it going?", "label": "math"}
+{"text": "A rectangle is twice as long as it is wide and its area is 50 — what are its sides?", "label": "math"}
+{"text": "What's 15 percent of 240?", "label": "math"}
+{"text": "Two dice are rolled — what are the odds the total is seven?", "label": "math"}
+{"text": "The sequence 2, 6, 18, 54 — what comes next?", "label": "math"}
+{"text": "Translate 'good morning' into Spanish", "label": "translation"}
+{"text": "'Guten Tag' — what does that mean in English?", "label": "translation"}
+{"text": "What's the Spanish word for butterfly?", "label": "translation"}
+{"text": "Put 'I would like a coffee, please' into French", "label": "translation"}
+{"text": "How do Italians say 'see you tomorrow'?", "label": "translation"}
+{"text": "Give me the gist of the text below in one line", "label": "summarization"}
+{"text": "What are the main takeaways from this report?", "label": "summarization"}
+{"text": "Boil this down to a few key points", "label": "summarization"}
+{"text": "In a sentence, what is this article about?", "label": "summarization"}
+{"text": "Cut this down to just the essentials", "label": "summarization"}
+{"text": "Ugh, Mondays. How was your weekend?", "label": "chitchat"}
+{"text": "I'm a little bored, tell me something interesting", "label": "chitchat"}
+{"text": "Do you think pineapple belongs on pizza?", "label": "chitchat"}
+{"text": "Feeling great today, the sun is finally out!", "label": "chitchat"}
+{"text": "Any fun plans for the holidays?", "label": "chitchat"}
+{"text": "Which one is the tallest mountain on Earth?", "label": "qa"}
+{"text": "At what temperature does water freeze in Fahrenheit?", "label": "qa"}
+{"text": "Who is the author of Pride and Prejudice?", "label": "qa"}
+{"text": "How many continents are there?", "label": "qa"}
+{"text": "What is the currency used in Japan called?", "label": "qa"}
+{"text": "From the paragraph below, grab all the phone numbers", "label": "extraction"}
+{"text": "Which companies are named in this report?", "label": "extraction"}
+{"text": "Give me just the dates and amounts from this receipt", "label": "extraction"}
+{"text": "Pick out the email addresses in this message", "label": "extraction"}
+{"text": "What are the product SKUs mentioned here?", "label": "extraction"}
