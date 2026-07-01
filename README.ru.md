@@ -48,6 +48,11 @@
 ## 📦 Установка
 
 ```bash
+# Docker (GitHub Container Registry)
+docker run -p 9000:9000 -e CORTIQ_ADMIN_TOKEN=secret \
+  -v "$PWD/config:/app/config" ghcr.io/infosave2007/cortiq-gateway:latest
+# → панель на http://localhost:9000/admin
+
 # с crates.io
 cargo install cortiq-gateway
 
@@ -56,6 +61,10 @@ git clone https://github.com/infosave2007/cortiq-gateway
 cd cortiq-gateway
 cargo build --release   # ./target/release/cortiq-gateway
 ```
+
+Образ идёт с дефолтным конфигом и работает из коробки; смонтируйте `/app/config`
+(с `gateway.toml`), чтобы использовать свой. Теги: `:latest`, `:X.Y.Z`, `:edge`
+(linux/amd64 + arm64).
 
 ---
 
