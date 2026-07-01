@@ -3,7 +3,7 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [0.2.2] - 2026-07-01
 
 ### Added
 - **Latency benchmark** vs LiteLLM and Portkey: a reproducible harness (`bench/`,
