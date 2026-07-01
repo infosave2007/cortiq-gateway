@@ -3,6 +3,7 @@
 **English** · [Русский](https://github.com/infosave2007/cortiq-gateway/blob/master/README.ru.md)
 
 [![Crates.io](https://img.shields.io/crates/v/cortiq-gateway.svg)](https://crates.io/crates/cortiq-gateway)
+[![Docker](https://img.shields.io/badge/ghcr.io-cortiq--gateway-2496ED?logo=docker&logoColor=white)](https://github.com/infosave2007/cortiq-gateway/pkgs/container/cortiq-gateway)
 [![CI](https://github.com/infosave2007/cortiq-gateway/actions/workflows/ci.yml/badge.svg)](https://github.com/infosave2007/cortiq-gateway/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/infosave2007/cortiq-gateway/blob/master/LICENSE)
 ![Rust](https://img.shields.io/badge/Rust-2021-orange.svg)
@@ -67,6 +68,17 @@ cargo build --release   # ./target/release/cortiq-gateway
 
 The image ships a default config and runs out of the box; mount `/app/config` (with a
 `gateway.toml`) to use your own. Tags: `:latest`, `:X.Y.Z`, `:edge` (linux/amd64 + arm64).
+
+**Docker Compose** — gateway + a local Ollama model in one command:
+
+```bash
+docker compose up -d
+docker compose exec ollama ollama pull qwen2.5:0.5b   # pull a model once
+# → OpenAI API at http://localhost:9000/v1 · admin at /admin (token: change-me)
+```
+
+See [`docker-compose.yml`](docker-compose.yml). For smart routing, set `CORTIQ_ROUTER_KEY`
+and add a `[router]` (see [docs/ROUTER.md](docs/ROUTER.md)).
 
 ---
 

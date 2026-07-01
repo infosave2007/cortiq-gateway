@@ -3,6 +3,12 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [Unreleased]
+
+### Added
+- **Docker Compose** quickstart (`docker-compose.yml` + `config/gateway.compose.toml`):
+  gateway + a local Ollama model in one command. GHCR badge in the READMEs.
+
 ## [0.2.2] - 2026-07-01
 
 ### Added
