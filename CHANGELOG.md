@@ -9,6 +9,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - **Latency benchmark** vs LiteLLM and Portkey: a reproducible harness (`bench/`,
   instant mock backend + Apache Bench) and `BENCHMARKS.md`. Measured gateway overhead:
   Cortiq ~57k req/s / p99 1 ms vs Portkey ~5.8k / p99 9 ms vs LiteLLM ~1.2k / p99 59 ms.
+- **Accuracy benchmark**: task-type routing on natural-language prompts (`bench/accuracy.py`,
+  `bench/tasks.jsonl`) — allaigate semantic router 100% (37/37) vs a keyword heuristic 32%
+  (competitors have no semantic task router).
 
 ## [0.2.1] - 2026-06-30
 

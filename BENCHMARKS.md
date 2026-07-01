@@ -27,6 +27,35 @@ path.
 > Absolute numbers depend on hardware; the **ratios** between gateways are the point.
 > Run `bench/run.sh` to get numbers for your environment.
 
+## Accuracy: task-type routing
+
+Speed is only half the story. Cortiq's other edge is **routing by task type** — sending
+each prompt to the right model — via the allaigate semantic classifier. LiteLLM and
+Portkey have **no semantic task router**: you either pin a model, write brittle rules,
+or pay for an extra LLM classification call.
+
+On a 37-prompt, 7-task-type set of **natural-language prompts** (no explicit trigger
+words like "translate" / "summarize" — [`bench/tasks.jsonl`](bench/tasks.jsonl)):
+
+| Classifier | Correct | Accuracy |
+|---|--:|--:|
+| **allaigate semantic router** | 37 / 37 | **100%** |
+| keyword heuristic (DIY without a classifier) | 12 / 37 | 32% |
+
+A keyword matcher looks good on prompts that literally say "translate this" — but real
+users don't. On natural phrasing (`"'Guten Tag' — what does that mean in English?"`,
+`"boil this down to a few key points"`, `"which companies are named in this report?"`)
+surface matching collapses while the semantic router still routes correctly.
+
+- **Methodology.** [`bench/accuracy.py`](bench/accuracy.py) sends each prompt to the live
+  allaigate router (`taxonomy = data-assistant`) and compares the predicted `task_label`
+  to the ground truth; a keyword heuristic is scored on the same set as a lower bound for
+  "route without a classifier."
+- **Caveats.** Small, hand-labeled set; phrasing is deliberately keyword-light to test
+  semantic understanding vs surface matching. Expand `tasks.jsonl` and re-run. allaigate's
+  own published figure is **94% at separating close task types** (a harder eval than this one).
+- **Reproduce.** `CORTIQ_ROUTER_KEY=cortiq_… python3 bench/accuracy.py`
+
 ## Why this matters
 
 Agentic workloads make **many** gateway calls per task (plan → sub-tasks → tool calls

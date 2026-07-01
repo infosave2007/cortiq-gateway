@@ -220,9 +220,9 @@ Details — [docs/PROTOCOLS.md](https://github.com/infosave2007/cortiq-gateway/b
 
 ---
 
-## ⚡ Performance
+## ⚡ Performance & accuracy
 
-Gateway overhead proxying the same instant backend, `ab -k -r -c 20 -n 5000`:
+**Latency** — gateway overhead proxying the same instant backend, `ab -k -r -c 20 -n 5000`:
 
 | Gateway | req/s | p50 | p99 |
 |---|--:|--:|--:|
@@ -230,8 +230,16 @@ Gateway overhead proxying the same instant backend, `ab -k -r -c 20 -n 5000`:
 | Portkey (Node) | ~5,800 | 3 ms | 9 ms |
 | LiteLLM (Python, 4 workers) | ~1,200 | 9 ms | 59 ms |
 
+**Accuracy** — task-type routing on natural-language prompts (7 task types). LiteLLM/Portkey
+have no semantic task router; a keyword heuristic is the DIY stand-in:
+
+| Classifier | Accuracy |
+|---|--:|
+| **allaigate semantic router** | **100%** (37/37) |
+| keyword heuristic (no classifier) | 32% (12/37) |
+
 Methodology, caveats and a reproducible harness: **[BENCHMARKS.md](BENCHMARKS.md)**
-(`bash bench/run.sh`). Numbers vary by hardware; the ratios are the point.
+(`bash bench/run.sh`, `python3 bench/accuracy.py`). Numbers vary; the gaps are the point.
 
 ## Build & test
 
@@ -255,6 +263,7 @@ cargo test                 # config round-trip, routing validation
 | Routing — auto / pinned / failover / degrade | integration (mock **and** live allaigate router) | ✅ |
 | Hot config reload (no restart) | integration | ✅ |
 | Latency benchmark vs LiteLLM / Portkey | `bench/run.sh` (Apache Bench) — see [BENCHMARKS.md](BENCHMARKS.md) | ✅ |
+| Task-type routing accuracy | `bench/accuracy.py` — live router 100% vs keyword heuristic 32% | ✅ |
 
 ---
 
