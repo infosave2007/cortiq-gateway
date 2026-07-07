@@ -8,8 +8,9 @@
 pub mod assets;
 
 use crate::config::{
-    AdminCfg, ApiKeyCfg, BreakerCfg, CacheCfg, Config, CortiqCfg, LogCfg, ModelCfg, ProtocolsCfg,
-    RouteCfg, RouterCfg, RoutingCfg, RoutingPolicy, StatsCfg, TelemetryCfg, TierTargets,
+    AdminCfg, ApiKeyCfg, BreakerCfg, CacheCfg, CmfCfg, Config, CortiqCfg, LogCfg, ModelCfg,
+    ProtocolsCfg, RouteCfg, RouterCfg, RoutingCfg, RoutingPolicy, StatsCfg, TelemetryCfg,
+    TierTargets,
 };
 use crate::model::{ChatRequest, GenParams, Message, RequestMeta, RoutingDirective};
 use crate::state::SharedState;
@@ -142,6 +143,7 @@ fn parse_routing(model: &str) -> RoutingDirective {
 pub fn api_routes(admin_token: String) -> Router<SharedState> {
     Router::new()
         .route("/admin/api/health", get(health))
+        .route("/admin/api/router/probe", post(router_probe))
         .route("/admin/api/meta", get(meta))
         .route("/admin/api/config", get(get_config).put(put_config))
         .route("/admin/api/models", get(list_models).post(create_model))
@@ -163,6 +165,12 @@ pub fn api_routes(admin_token: String) -> Router<SharedState> {
             get(list_secrets).put(set_secret).delete(clear_secret),
         )
         .route("/admin/api/stats", get(get_stats))
+        .route("/admin/api/shadow", get(get_shadow))
+        .route("/admin/api/hf/search", get(hf_search))
+        .route("/admin/api/import", get(list_imports).post(start_import))
+        .route("/admin/api/import/:job", get(import_status).delete(delete_import))
+        .route("/admin/api/import/:job/cancel", post(cancel_import))
+        .route("/admin/api/import/:job/register", post(register_import))
         .route("/admin/api/requests", get(get_requests))
         .route("/admin/api/test", post(run_test))
         .route("/admin/api/test/stream", post(run_test_stream))
@@ -225,12 +233,14 @@ async fn probe_router(url: &str) -> (bool, u64) {
         Err(_) => return (false, 0),
     };
     let started = Instant::now();
-    let target = format!("{}/healthz", url.trim_end_matches('/'));
+    // cortiq-router exposes health at /v1/healthz (auth-exempt); a bare /healthz
+    // hits the auth middleware and 401s, which would read as a false "reachable".
+    let target = format!("{}/v1/healthz", url.trim_end_matches('/'));
     let ok = client
         .get(&target)
         .send()
         .await
-        .map(|r| r.status().as_u16() < 500)
+        .map(|r| r.status().is_success())
         .unwrap_or(false);
     (ok, started.elapsed().as_millis() as u64)
 }
@@ -238,6 +248,18 @@ async fn probe_router(url: &str) -> (bool, u64) {
 async fn health(State(state): State<SharedState>) -> ApiResult {
     let live = state.live();
     let (router_ok, router_ms) = probe_router(&live.cfg.router.url).await;
+    let key_source = match &live.cfg.router.api_key_env {
+        Some(env) => state.secrets.source(env),
+        None => "none",
+    };
+    let last = state
+        .router_status
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let last_error = if last == 0 {
+        Value::Null
+    } else {
+        json!({ "kind": crate::router_client::classify_status(last), "http": last })
+    };
     let models: Vec<Value> = live
         .cfg
         .models
@@ -262,9 +284,103 @@ async fn health(State(state): State<SharedState>) -> ApiResult {
         "ok": true,
         "version": env!("CARGO_PKG_VERSION"),
         "listen": live.cfg.listen,
-        "router": { "url": live.cfg.router.url, "reachable": router_ok, "latency_ms": router_ms },
+        "router": {
+            "url": live.cfg.router.url,
+            "reachable": router_ok,
+            "latency_ms": router_ms,
+            "key_env": live.cfg.router.api_key_env,
+            "key_source": key_source,
+            "last_error": last_error,
+        },
         "models": models,
     }))
+}
+
+/// `POST /admin/api/router/probe` — a real (authenticated) `/v1/route` call so the
+/// panel can tell "key missing / rejected / out of quota" apart from "router down".
+/// User-triggered only: it consumes one routing decision. Also fetches
+/// `GET /v1/usage` best-effort — not part of the documented contract yet; the
+/// panel shows balance/usage automatically once the router starts serving it.
+async fn router_probe(State(state): State<SharedState>) -> ApiResult {
+    let live = state.live();
+    let rcfg = live.cfg.router.clone();
+    let key = rcfg
+        .api_key_env
+        .as_deref()
+        .and_then(|n| state.secrets.resolve(n));
+    if rcfg.api_key_env.is_some() && key.is_none() {
+        return ok(json!({ "ok": false, "status": "no_key" }));
+    }
+
+    let mut builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_millis(rcfg.timeout_ms.max(5000)));
+    if !rcfg.verify_tls {
+        builder = builder
+            .danger_accept_invalid_certs(true)
+            .danger_accept_invalid_hostnames(true);
+    }
+    let client = builder.build().map_err(|e| ApiError::bad(e.to_string()))?;
+    let url = rcfg.url.trim_end_matches('/').to_string();
+
+    let mut body = json!({
+        "input": { "text": "ping" },
+        "options": { "policy_profile": "balanced", "allow_oracle": false }
+    });
+    if let Some(tax) = &rcfg.taxonomy_id {
+        body["taxonomy_id"] = json!(tax);
+    }
+    let mut req = client.post(format!("{url}/v1/route")).json(&body);
+    if let Some(k) = &key {
+        req = req.bearer_auth(k);
+    }
+
+    let started = Instant::now();
+    let resp = match req.send().await {
+        Ok(r) => r,
+        Err(e) => {
+            let status = if e.is_timeout() {
+                "timeout"
+            } else {
+                "unreachable"
+            };
+            return ok(json!({
+                "ok": false,
+                "status": status,
+                "latency_ms": started.elapsed().as_millis() as u64,
+            }));
+        }
+    };
+    let latency_ms = started.elapsed().as_millis() as u64;
+    let code = resp.status().as_u16();
+    if !resp.status().is_success() {
+        let message = resp
+            .json::<Value>()
+            .await
+            .ok()
+            .and_then(|v| v["error"]["message"].as_str().map(|s| s.to_string()));
+        return ok(json!({
+            "ok": false,
+            "status": crate::router_client::classify_status(code),
+            "http": code,
+            "latency_ms": latency_ms,
+            "message": message,
+        }));
+    }
+
+    let mut usage = Value::Null;
+    if let Some(k) = &key {
+        if let Ok(r) = client
+            .get(format!("{url}/v1/usage"))
+            .bearer_auth(k)
+            .send()
+            .await
+        {
+            if r.status().is_success() {
+                usage = r.json::<Value>().await.unwrap_or(Value::Null);
+            }
+        }
+    }
+    ok(json!({ "ok": true, "status": "ok", "latency_ms": latency_ms, "usage": usage }))
 }
 
 async fn meta() -> ApiResult {
@@ -478,6 +594,7 @@ async fn get_settings(State(state): State<SharedState>) -> ApiResult {
         "stats": c.stats,
         "admin": c.admin,
         "cache": c.cache,
+        "cmf": c.cmf,
     }))
 }
 
@@ -493,6 +610,7 @@ struct SettingsBody {
     stats: Option<StatsCfg>,
     admin: Option<AdminCfg>,
     cache: Option<CacheCfg>,
+    cmf: Option<CmfCfg>,
 }
 
 async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBody>) -> ApiResult {
@@ -535,6 +653,14 @@ async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBo
         // the cache is built at startup; persist now, apply on restart
         needs_restart = true;
         cfg.cache = v;
+    }
+    if let Some(v) = b.cmf {
+        // manage_server / local_model changes apply on restart (the server is
+        // spawned at startup); local_only / router routing apply immediately.
+        if v.manage_server != cfg.cmf.manage_server || v.local_model != cfg.cmf.local_model {
+            needs_restart = true;
+        }
+        cfg.cmf = v;
     }
     state.reload(cfg)?;
     ok(json!({ "ok": true, "needs_restart": needs_restart }))
@@ -676,6 +802,137 @@ async fn get_stats(State(state): State<SharedState>, Query(q): Query<StatsQuery>
     let mut snap = state.stats.snapshot(range_secs, groupby);
     snap["cache"] = state.cache.snapshot();
     ok(snap)
+}
+
+/// Self-warming shadow loop: per-task-type promotion state, Wilson-LB of the
+/// judged pass-rate, and whether the local model is serving it yet.
+async fn get_shadow(State(state): State<SharedState>) -> ApiResult {
+    let labels: Vec<Value> = state
+        .promotion
+        .snapshot()
+        .into_iter()
+        .map(|(label, st, n, pass_rate, lb)| {
+            json!({
+                "label": label,
+                "state": format!("{st:?}"),
+                "n": n,
+                "pass_rate": pass_rate,
+                "wilson_lb": lb,
+                "serves_local": state.promotion.serves_local(&label),
+            })
+        })
+        .collect();
+    ok(json!({ "enabled": state.promotion.enabled(), "labels": labels }))
+}
+
+// ── CMF model factory: HF search → convert → register ──
+
+#[derive(Deserialize)]
+struct HfQuery {
+    q: Option<String>,
+    limit: Option<usize>,
+}
+
+/// Proxy HuggingFace model search (server-side: avoids CORS, adds token).
+async fn hf_search(State(state): State<SharedState>, Query(q): Query<HfQuery>) -> ApiResult {
+    let live = state.live();
+    let token = if live.cfg.cmf.hf_token_env.is_empty() {
+        None
+    } else {
+        state.secrets.resolve(&live.cfg.cmf.hf_token_env)
+    };
+    let query = q.q.unwrap_or_default();
+    let limit = q.limit.unwrap_or(24).min(50);
+    let models = crate::import::hf_search(&query, limit, token.as_deref())
+        .await
+        .map_err(ApiError::bad)?;
+    ok(json!({ "models": models }))
+}
+
+async fn list_imports(State(state): State<SharedState>) -> ApiResult {
+    ok(json!({ "jobs": state.imports.list() }))
+}
+
+/// Start a conversion job (returns the job id; progress via `import/:job`).
+async fn start_import(
+    State(state): State<SharedState>,
+    Json(p): Json<crate::import::ImportParams>,
+) -> ApiResult {
+    let live = state.live();
+    let id = crate::import::start_import(state.imports.clone(), &live.cfg.cmf, p)
+        .map_err(ApiError::bad)?;
+    ok(json!({ "job": id }))
+}
+
+async fn import_status(
+    State(state): State<SharedState>,
+    Path(job): Path<String>,
+) -> ApiResult {
+    match state.imports.get(&job) {
+        Some(j) => ok(serde_json::to_value(j).unwrap_or_else(|_| json!({}))),
+        None => Err(ApiError::not_found(format!("job '{job}' not found"))),
+    }
+}
+
+/// Cancel a running conversion: kills the converter and removes partial output.
+async fn cancel_import(
+    State(state): State<SharedState>,
+    Path(job): Path<String>,
+) -> ApiResult {
+    if state.imports.get(&job).is_none() {
+        return Err(ApiError::not_found(format!("job '{job}' not found")));
+    }
+    let cancelled = state.imports.cancel(&job);
+    ok(json!({ "ok": cancelled }))
+}
+
+/// Delete a finished conversion and its converted `.cmf` file(s) from disk.
+async fn delete_import(
+    State(state): State<SharedState>,
+    Path(job): Path<String>,
+) -> ApiResult {
+    if state.imports.get(&job).is_none() {
+        return Err(ApiError::not_found(format!("job '{job}' not found")));
+    }
+    let removed = state.imports.delete(&job).map_err(ApiError::bad)?;
+    ok(json!({ "ok": removed }))
+}
+
+/// Register a finished `.cmf` as a local model (OpenAI provider → cortiq-server).
+async fn register_import(
+    State(state): State<SharedState>,
+    Path(job): Path<String>,
+) -> ApiResult {
+    let j = state
+        .imports
+        .get(&job)
+        .ok_or_else(|| ApiError::not_found(format!("job '{job}' not found")))?;
+    if j.state != "done" {
+        return Err(ApiError::bad("conversion not finished"));
+    }
+    let base = std::path::Path::new(&j.output)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "cmf-local".into());
+    let id = format!("cmf-{base}");
+    let mut cfg = current_cfg(&state);
+    if cfg.models.iter().any(|m| m.id == id) {
+        return Err(ApiError::bad(format!("model '{id}' already registered")));
+    }
+    cfg.models.push(crate::config::ModelCfg {
+        id: id.clone(),
+        provider: "openai".into(),
+        base_url: cfg.cmf.cortiq_server_url.clone(),
+        model: base,
+        cost_tier: "local".into(),
+        price_in: 0.0,
+        price_out: 0.0,
+        kind: "chat".into(),
+        api_key_env: None,
+        caps: Vec::new(),
+    });
+    state.reload(cfg)?;
+    ok(json!({ "ok": true, "model_id": id }))
 }
 
 #[derive(Deserialize)]
