@@ -10,10 +10,13 @@
 
 mod admin;
 mod cache;
+mod cmf_runtime;
 mod config;
 mod error;
+mod import;
 mod model;
 mod pipeline;
+mod promotion;
 mod protocols;
 mod providers;
 mod registry;
@@ -78,6 +81,16 @@ async fn main() -> anyhow::Result<()> {
     let (admin_token, generated) = resolve_admin_token(&cfg, &args);
 
     let state = SharedState::build(cfg, args.config.clone())?;
+
+    // Close the loop with the CMF format (github.com/infosave2007/cmf): install
+    // / update cortiq-cli and run a local `cortiq serve` if configured. Runs in
+    // the background so startup is never blocked by a cargo install or a model
+    // load; the served model is registered in the pool and usable offline.
+    {
+        let cmf_rt = state.cmf.clone();
+        let cmf_cfg = state.live().cfg.cmf.clone();
+        tokio::spawn(async move { cmf_runtime::manage(cmf_rt, cmf_cfg).await });
+    }
 
     let mut app = Router::new()
         .route("/healthz", get(|| async { "ok" }))

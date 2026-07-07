@@ -3,6 +3,26 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
+
+/// Base directory for gateway-managed data (models, logs). Honors
+/// `$CORTIQ_GATEWAY_HOME`, then `$XDG_DATA_HOME/cortiq-gateway`, then
+/// `~/.cortiq-gateway` — so defaults work regardless of the process CWD
+/// (important once the gateway is installed rather than run from its repo).
+pub fn data_dir() -> PathBuf {
+    for (var, sub) in [("CORTIQ_GATEWAY_HOME", ""), ("XDG_DATA_HOME", "cortiq-gateway"), ("HOME", ".cortiq-gateway")] {
+        if let Ok(v) = std::env::var(var) {
+            if !v.is_empty() {
+                return if sub.is_empty() { PathBuf::from(v) } else { PathBuf::from(v).join(sub) };
+            }
+        }
+    }
+    PathBuf::from("data")
+}
+
+fn data_path(name: &str) -> String {
+    data_dir().join(name).to_string_lossy().into_owned()
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -33,10 +53,116 @@ pub struct Config {
     pub stats: StatsCfg,
     #[serde(default)]
     pub cache: CacheCfg,
+    #[serde(default)]
+    pub shadow: ShadowCfg,
+    #[serde(default)]
+    pub cmf: CmfCfg,
+}
+
+/// CMF-format model factory: import a HuggingFace model, convert it to a
+/// local `.cmf` (quantized), and serve it via cortiq-server. Points the
+/// gateway at the Python converter + runtime on the host.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CmfCfg {
+    /// Python interpreter that has torch + the converter deps.
+    #[serde(default = "default_cmf_python")]
+    pub python_bin: String,
+    /// Path to `convert_dtgma_to_cmf.py`.
+    #[serde(default = "default_cmf_converter")]
+    pub converter: String,
+    /// Directory where produced `.cmf` files are written.
+    #[serde(default = "default_cmf_models_dir")]
+    pub models_dir: String,
+    /// Base URL of the cortiq-server that serves the `.cmf` (OpenAI /v1),
+    /// used when registering a converted model as a provider.
+    #[serde(default = "default_cmf_server_url")]
+    pub cortiq_server_url: String,
+    /// Secret name of a HuggingFace token (higher search rate limits +
+    /// gated/private repos). Empty = anonymous public search.
+    #[serde(default)]
+    pub hf_token_env: String,
+    /// `cortiq` CLI binary for the local server (from `cargo install cortiq-cli`).
+    #[serde(default = "default_cortiq_bin")]
+    pub cortiq_bin: String,
+    /// Install cortiq-cli from crates.io automatically if the binary is missing.
+    #[serde(default)]
+    pub auto_install: bool,
+    /// On startup, check crates.io and reinstall if a newer cortiq-cli exists.
+    #[serde(default)]
+    pub auto_update: bool,
+    /// Spawn and manage a local `cortiq serve` for `local_model`, and register
+    /// it in the model pool — a local `.cmf` backend the gateway can use even
+    /// when no external provider (or the router) is available.
+    #[serde(default)]
+    pub manage_server: bool,
+    /// Path to the local `.cmf` to serve (empty = disabled).
+    #[serde(default)]
+    pub local_model: String,
+    /// Host the managed local server binds to.
+    #[serde(default = "default_cmf_local_host")]
+    pub local_host: String,
+    /// Port the managed local server binds to.
+    #[serde(default = "default_cmf_local_port")]
+    pub local_port: u16,
+    /// Model id the local server is registered under in the pool.
+    #[serde(default = "default_cmf_model_id")]
+    pub model_id: String,
+    /// Use ONLY local models: route every request to the local model, ignoring
+    /// the router and any external providers ("use only local models").
+    #[serde(default)]
+    pub local_only: bool,
+}
+impl Default for CmfCfg {
+    fn default() -> Self {
+        Self {
+            python_bin: default_cmf_python(),
+            converter: default_cmf_converter(),
+            models_dir: default_cmf_models_dir(),
+            cortiq_server_url: default_cmf_server_url(),
+            hf_token_env: String::new(),
+            cortiq_bin: default_cortiq_bin(),
+            auto_install: false,
+            auto_update: false,
+            manage_server: false,
+            local_model: String::new(),
+            local_host: default_cmf_local_host(),
+            local_port: default_cmf_local_port(),
+            model_id: default_cmf_model_id(),
+            local_only: false,
+        }
+    }
+}
+fn default_cortiq_bin() -> String {
+    "cortiq".into()
+}
+fn default_cmf_local_host() -> String {
+    "127.0.0.1".into()
+}
+fn default_cmf_local_port() -> u16 {
+    8081
+}
+fn default_cmf_model_id() -> String {
+    "cmf-local".into()
+}
+fn default_cmf_python() -> String {
+    "python3".into()
+}
+fn default_cmf_converter() -> String {
+    "../cmf/converter/convert_dtgma_to_cmf.py".into()
+}
+fn default_cmf_models_dir() -> String {
+    data_path("models")
+}
+fn default_cmf_server_url() -> String {
+    "http://127.0.0.1:8081/v1".into()
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RouterCfg {
+    /// Master switch — when false the router is never called; the gateway
+    /// serves from the local model pool (local `.cmf` / configured default).
+    #[serde(default = "default_router_enabled")]
+    pub enabled: bool,
     pub url: String,
     #[serde(default = "default_router_timeout")]
     pub timeout_ms: u64,
@@ -46,6 +172,9 @@ pub struct RouterCfg {
     pub api_key_env: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub taxonomy_id: Option<String>,
+}
+fn default_router_enabled() -> bool {
+    true
 }
 fn default_router_timeout() -> u64 {
     800
@@ -313,13 +442,89 @@ fn default_stats_enabled() -> bool {
     true
 }
 fn default_stats_file() -> String {
-    "config/stats.jsonl".into()
+    data_path("stats.jsonl")
 }
 fn default_stats_ring() -> usize {
     500
 }
 fn default_stats_retention() -> String {
     "7d".into()
+}
+
+/// Self-warming shadow loop (docs/SELF_WARMING_GATEWAY.md). While a task
+/// label is not yet promoted, the client is served the CLOUD answer; in
+/// parallel (sampled, non-blocking) the local `cmf-local` model answers and
+/// a cheap `judge` model scores it against the cloud answer. The per-label
+/// Wilson-LB of that pass stream gates promotion to local serving.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ShadowCfg {
+    /// Master switch. Off = zero overhead, classic gateway behavior.
+    #[serde(default)]
+    pub enabled: bool,
+    /// model_id (from `[[models]]`) of the local CMF model (OpenAI-compatible
+    /// cortiq-server). Empty disables the loop.
+    #[serde(default)]
+    pub local_model_id: String,
+    /// model_id of the cheap judge (different family than the answerer).
+    #[serde(default)]
+    pub judge_model_id: String,
+    /// Fraction of eligible requests to shadow+judge (0..1). Bounds cost.
+    #[serde(default = "default_shadow_sample")]
+    pub sample_rate: f64,
+    /// judge.jsonl append+replay path. Empty = in-memory only.
+    #[serde(default = "default_shadow_file")]
+    pub file: String,
+    /// Wilson-95 lower bound of pass-rate required to promote.
+    #[serde(default = "default_shadow_lb")]
+    pub promote_lb: f64,
+    /// Min judgments before promotion is considered.
+    #[serde(default = "default_shadow_nmin")]
+    pub n_min: usize,
+    /// Rolling window of judgments per label.
+    #[serde(default = "default_shadow_window")]
+    pub window: usize,
+    /// Extra canary judgments before full local serving.
+    #[serde(default = "default_shadow_soak")]
+    pub soak: usize,
+    /// GATE past shadow-only: actually SERVE promoted labels from the local
+    /// model (with failover to cloud on error + a complexity veto). Default
+    /// OFF — the memo's 3 risks (§8) should be retired by measurement first.
+    #[serde(default)]
+    pub serve_when_promoted: bool,
+}
+impl Default for ShadowCfg {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            local_model_id: String::new(),
+            judge_model_id: String::new(),
+            sample_rate: default_shadow_sample(),
+            file: default_shadow_file(),
+            promote_lb: default_shadow_lb(),
+            n_min: default_shadow_nmin(),
+            window: default_shadow_window(),
+            soak: default_shadow_soak(),
+            serve_when_promoted: false,
+        }
+    }
+}
+fn default_shadow_sample() -> f64 {
+    0.15
+}
+fn default_shadow_file() -> String {
+    data_path("judge.jsonl")
+}
+fn default_shadow_lb() -> f64 {
+    0.95
+}
+fn default_shadow_nmin() -> usize {
+    200
+}
+fn default_shadow_window() -> usize {
+    500
+}
+fn default_shadow_soak() -> usize {
+    100
 }
 
 /// Semantic (embedding-based) response cache — returns a cached answer for prompts
@@ -374,8 +579,12 @@ impl Config {
 
     /// Integrity validation: non-empty model pool, valid routing targets.
     pub fn validate(&self) -> anyhow::Result<()> {
-        if self.models.is_empty() {
-            anyhow::bail!("config: at least one [[models]] entry is required");
+        // A managed local CMF model counts as an available model even though it
+        // is registered dynamically rather than via a [[models]] entry — this
+        // is what lets the gateway run on local models alone (no cloud, no router).
+        let has_local = self.cmf.manage_server && !self.cmf.local_model.trim().is_empty();
+        if self.models.is_empty() && !has_local {
+            anyhow::bail!("config: at least one [[models]] entry (or a managed local CMF model) is required");
         }
         // uniqueness of model ids
         let mut seen = std::collections::HashSet::new();
@@ -385,9 +594,12 @@ impl Config {
             }
         }
         // every target in [routing] must exist in the model pool
-        let ids: std::collections::HashSet<&str> =
+        let mut ids: std::collections::HashSet<&str> =
             self.models.iter().map(|m| m.id.as_str()).collect();
-        if !ids.contains(self.routing.default.as_str()) {
+        if has_local {
+            ids.insert(self.cmf.model_id.as_str());
+        }
+        if !self.routing.default.is_empty() && !ids.contains(self.routing.default.as_str()) {
             anyhow::bail!(
                 "config: routing.default '{}' is not a known model id",
                 self.routing.default

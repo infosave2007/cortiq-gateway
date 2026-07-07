@@ -1,7 +1,7 @@
 //! Model pool registry: builds providers from `[[models]]` and resolves
 //! `model_id → Arc<dyn Provider>`.
 
-use crate::config::Config;
+use crate::config::{Config, ModelCfg};
 use crate::providers::{anthropic::AnthropicProvider, openai::OpenAiProvider, Provider};
 use crate::secrets::SecretStore;
 use std::collections::HashMap;
@@ -27,7 +27,35 @@ impl Registry {
             };
             by_id.insert(m.id.clone(), provider);
         }
+
+        // Managed local CMF server: register it as an OpenAI-compatible provider
+        // so it can be routed to like any other backend — including when the
+        // router is unavailable or the gateway is in local-only mode.
+        if cfg.cmf.manage_server
+            && !cfg.cmf.local_model.trim().is_empty()
+            && !by_id.contains_key(&cfg.cmf.model_id)
+        {
+            let m = ModelCfg {
+                id: cfg.cmf.model_id.clone(),
+                provider: "openai".into(),
+                base_url: format!("http://{}:{}/v1", cfg.cmf.local_host, cfg.cmf.local_port),
+                model: "cortiq".into(),
+                cost_tier: "local".into(),
+                price_in: 0.0,
+                price_out: 0.0,
+                kind: "chat".into(),
+                api_key_env: None,
+                caps: Vec::new(),
+            };
+            by_id.insert(m.id.clone(), Arc::new(OpenAiProvider::new(&m, None)?));
+        }
         Ok(Self { by_id })
+    }
+
+    /// Any model id, preferring a real registered one (used as a local-first
+    /// fallback target when routing cannot pick a specific model).
+    pub fn any_id(&self) -> Option<String> {
+        self.by_id.keys().next().cloned()
     }
 
     pub fn get(&self, model_id: &str) -> Option<Arc<dyn Provider>> {

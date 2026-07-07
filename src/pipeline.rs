@@ -4,7 +4,8 @@
 
 use crate::error::{GatewayError, Result};
 use crate::model::{
-    ChatRequest, ChatResponse, Choice, Message, RouteDecision, RouteInfo, RoutingDirective, Usage,
+    ChatRequest, ChatResponse, Choice, GenParams, Message, RequestMeta, RouteDecision, RouteInfo,
+    RoutingDirective, Usage,
 };
 use crate::state::{Live, SharedState};
 use crate::stats::RequestRecord;
@@ -66,6 +67,21 @@ impl Pipeline {
                 }
             }
         }
+
+        // Self-warming shadow loop: capture the prompt BEFORE `req` is moved,
+        // so we can (non-blocking, sampled) judge a local answer after the
+        // cloud reply. Client latency is unaffected. Nothing is served locally
+        // here — this only feeds the promotion table.
+        let shadow_cfg = state.live().cfg.shadow.clone();
+        let shadow_prompt = if shadow_cfg.enabled
+            && !shadow_cfg.local_model_id.is_empty()
+            && !shadow_cfg.judge_model_id.is_empty()
+        {
+            let live = state.live();
+            Some(self.extract_text(&req.messages, "last_user", live.cfg.route.max_chars))
+        } else {
+            None
+        };
 
         let result = self.run_inner(req, state).await;
 
@@ -135,6 +151,29 @@ impl Pipeline {
             }
         }
 
+        // Fire the shadow judgment for a sampled subset (non-blocking).
+        if let (Some(prompt), Ok(resp)) = (shadow_prompt, &result) {
+            let cloud_answer = resp
+                .choices
+                .first()
+                .map(|c| c.message.content.clone())
+                .unwrap_or_default();
+            let label = resp.cortiq.task_label.clone();
+            // Only judge CLOUD-served answers — the reference must be the cloud
+            // answer, not a local one (a promoted label served locally would
+            // otherwise judge local-vs-local). Canary auditing of served-local
+            // answers (forcing a cloud reference for a fraction) is the next step.
+            if !cloud_answer.is_empty()
+                && !label.is_empty()
+                && label != "cache"
+                && resp.cortiq.selected_model != shadow_cfg.local_model_id
+                && should_shadow(&prompt, shadow_cfg.sample_rate)
+            {
+                let st = state.0.clone();
+                tokio::spawn(shadow_capture(st, shadow_cfg, prompt, cloud_answer, label));
+            }
+        }
+
         result
     }
 
@@ -152,50 +191,48 @@ impl Pipeline {
             live.cfg.route.max_chars,
         );
 
-        // 2. Obtain the router decision (or use the pinned model)
-        let (decision, route_source) = match &req.routing {
-            RoutingDirective::Pinned { model_id: _ } => {
-                let dec = RouteDecision {
-                    task_label: "pinned".to_string(),
-                    complexity_score: 0.0,
-                    complexity_tier: "pinned".to_string(),
-                    router_request_id: None,
-                    source: "pinned".to_string(),
-                };
-                (dec, "pinned".to_string())
-            }
-            RoutingDirective::Auto { profile } => {
-                let prof = profile.as_deref().unwrap_or(&live.cfg.route.profile);
-                match live.router.route(&text, prof).await {
-                    Ok(Some(dec)) => {
-                        let src = dec.source.clone();
-                        (dec, src)
-                    }
-                    Ok(None) | Err(_) => {
-                        tracing::warn!(
-                            "Router is unavailable. Gracefully degrading to default model."
-                        );
-                        let dec = RouteDecision {
-                            task_label: "degraded".to_string(),
-                            complexity_score: 0.5,
-                            complexity_tier: "degraded".to_string(),
-                            router_request_id: None,
-                            source: "fallback".to_string(),
-                        };
-                        (dec, "fallback".to_string())
-                    }
-                }
-            }
+        // 2–3. Decide the route and pick candidate models.
+        //
+        // Local-first rules, so CMF models work with no router at all:
+        //   • `[cmf].local_only`         → every request goes to the local pool,
+        //     ignoring the router, the pin, and external providers;
+        //   • `[router].enabled = false` → skip the router, use the local pool;
+        //   • router unavailable at runtime → graceful degrade to the local pool;
+        //   • an explicitly pinned model → used directly, no router call.
+        let mk = |label: &str, source: &str| RouteDecision {
+            task_label: label.to_string(),
+            complexity_score: 0.0,
+            complexity_tier: label.to_string(),
+            router_request_id: None,
+            source: source.to_string(),
         };
 
-        // 3. Select candidates by complexity tier / pinned model
-        let candidates = match &req.routing {
-            RoutingDirective::Pinned { model_id } => vec![model_id.clone()],
-            RoutingDirective::Auto { .. } => {
-                if route_source == "fallback" {
-                    vec![live.routing.default_model().to_string()]
-                } else {
-                    live.routing.candidates(&decision.complexity_tier)
+        let (decision, route_source, candidates) = if live.cfg.cmf.local_only {
+            (mk("local-only", "local"), "local".to_string(), live.local_candidates())
+        } else {
+            match &req.routing {
+                RoutingDirective::Pinned { model_id } => {
+                    (mk("pinned", "pinned"), "pinned".to_string(), vec![model_id.clone()])
+                }
+                RoutingDirective::Auto { profile } => {
+                    if !live.cfg.router.enabled {
+                        (mk("router-disabled", "local"), "local".to_string(), live.local_candidates())
+                    } else {
+                        let prof = profile.as_deref().unwrap_or(&live.cfg.route.profile);
+                        match live.router.route(&text, prof).await {
+                            Ok(Some(dec)) => {
+                                let src = dec.source.clone();
+                                let tier = dec.complexity_tier.clone();
+                                (dec, src, live.routing.candidates(&tier))
+                            }
+                            Ok(None) | Err(_) => {
+                                tracing::warn!(
+                                    "Router is unavailable. Gracefully degrading to the local/default model."
+                                );
+                                (mk("degraded", "fallback"), "fallback".to_string(), live.local_candidates())
+                            }
+                        }
+                    }
                 }
             }
         };
@@ -216,6 +253,19 @@ impl Pipeline {
             }
         }
 
+        // Local-first safety net: if routing produced no usable candidate (e.g.
+        // an unknown pinned model while the router is off), fall back to the
+        // managed local model so a configured local backend still answers.
+        if final_candidates.is_empty() && live.cfg.cmf.manage_server {
+            for id in live.local_candidates() {
+                if let Some(prov) = live.registry.get(&id) {
+                    if needs_tools && !prov.caps().tools {
+                        continue;
+                    }
+                    final_candidates.push(id);
+                }
+            }
+        }
         if final_candidates.is_empty() {
             return Err(GatewayError::UpstreamUnavailable(
                 "No healthy model available that satisfies required capabilities (e.g. tools)"
@@ -227,7 +277,23 @@ impl Pipeline {
 
     async fn run_inner(&self, req: ChatRequest, state: &SharedState) -> Result<ChatResponse> {
         let live = state.live();
-        let (decision, route_source, final_candidates) = self.resolve(&req, &live).await?;
+        let (decision, route_source, mut final_candidates) = self.resolve(&req, &live).await?;
+
+        // Serving-when-promoted (gated): a promoted task-label is served by the
+        // local model FIRST (failover to cloud on error). Per-request VETO uses
+        // the router's own complexity signal — a "high"-tier request escalates
+        // to cloud even in a promoted label (the local skill is for the common
+        // case, not the hard tail). Off by default.
+        let sh = &live.cfg.shadow;
+        if sh.serve_when_promoted
+            && !sh.local_model_id.is_empty()
+            && matches!(req.routing, RoutingDirective::Auto { .. })
+            && state.promotion.serves_local(&decision.task_label)
+            && !matches!(decision.complexity_tier.as_str(), "high" | "hard" | "complex")
+            && !final_candidates.iter().any(|m| m == &sh.local_model_id)
+        {
+            final_candidates.insert(0, sh.local_model_id.clone());
+        }
 
         // 4. Attempt provider call with failover (fall back to alternatives on error)
         let mut last_err = None;
@@ -591,4 +657,142 @@ fn tap_stream(
             error: errored,
         });
     }
+}
+
+// ─────────────────────────── self-warming shadow loop ───────────────────────────
+
+/// Deterministic sampling by prompt hash — no RNG dependency, and the same
+/// prompt is always (not) sampled, so repeated office templates don't skew
+/// the judged set request-by-request.
+fn should_shadow(prompt: &str, rate: f64) -> bool {
+    if rate <= 0.0 {
+        return false;
+    }
+    if rate >= 1.0 {
+        return true;
+    }
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    prompt.hash(&mut h);
+    (h.finish() % 10_000) < (rate * 10_000.0) as u64
+}
+
+fn clip(s: &str, max: usize) -> String {
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max).collect()
+    }
+}
+
+fn shadow_req(model_id: &str, content: String, max_tokens: u32) -> ChatRequest {
+    ChatRequest {
+        routing: RoutingDirective::Pinned {
+            model_id: model_id.to_string(),
+        },
+        messages: vec![Message {
+            role: "user".to_string(),
+            content,
+            tool_calls: Vec::new(),
+        }],
+        tools: Vec::new(),
+        params: GenParams {
+            temperature: Some(0.0),
+            max_tokens: Some(max_tokens),
+            ..Default::default()
+        },
+        stream: false,
+        meta: RequestMeta::default(),
+    }
+}
+
+/// Extract `{"score":N,"hard_fail":bool}` from a judge reply, tolerant of
+/// surrounding prose. Missing/garbled → (0, true) (fail-closed: an
+/// unparseable judgment must never count as a pass).
+fn parse_judge(text: &str) -> (u8, bool) {
+    let score = text
+        .split("score")
+        .nth(1)
+        .and_then(|t| t.chars().skip_while(|c| !c.is_ascii_digit()).next())
+        .and_then(|c| c.to_digit(10))
+        .map(|d| d.min(4) as u8);
+    let hard_fail = text
+        .split("hard_fail")
+        .nth(1)
+        .map(|t| t.contains("true"))
+        .unwrap_or(true);
+    match score {
+        Some(s) => (s, hard_fail),
+        None => (0, true),
+    }
+}
+
+/// Non-blocking: answer locally, have the cheap judge score it against the
+/// already-paid cloud answer, and feed the per-label promotion table. Any
+/// failure (missing provider, upstream error, unparseable judgment) is
+/// silently dropped — the client already got the cloud answer.
+async fn shadow_capture(
+    st: std::sync::Arc<crate::state::AppState>,
+    cfg: crate::config::ShadowCfg,
+    prompt: String,
+    cloud_answer: String,
+    label: String,
+) {
+    let live = st.live.load_full();
+    let (Some(local), Some(judge)) = (
+        live.registry.get(&cfg.local_model_id),
+        live.registry.get(&cfg.judge_model_id),
+    ) else {
+        return;
+    };
+
+    // 1. Local answer (free, CPU).
+    let a_local = match local.chat(shadow_req(&cfg.local_model_id, clip(&prompt, 4000), 512)).await {
+        Ok(r) => r
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default(),
+        Err(_) => return,
+    };
+    if a_local.trim().is_empty() {
+        return;
+    }
+
+    // 2. Reference-based judgment (cheap model, different family).
+    let jp = format!(
+        "You grade a CANDIDATE answer against a REFERENCE answer for the same task.\n\
+         Task type: {label}\n\n[TASK]\n{task}\n\n[REFERENCE]\n{reference}\n\n[CANDIDATE]\n{candidate}\n\n\
+         Reply with ONLY compact JSON: {{\"score\":0-4,\"hard_fail\":true|false}}. \
+         score>=3 means the candidate is acceptable (correct, complete, right format). \
+         hard_fail=true for fabricated facts, broken format, or unsafe content.",
+        label = label,
+        task = clip(&prompt, 2000),
+        reference = clip(&cloud_answer, 3000),
+        candidate = clip(&a_local, 3000),
+    );
+    let Ok(jr) = judge.chat(shadow_req(&cfg.judge_model_id, jp, 32)).await else {
+        return;
+    };
+    let judge_tokens = jr.usage.total_tokens;
+    let jtext = jr
+        .choices
+        .into_iter()
+        .next()
+        .map(|c| c.message.content)
+        .unwrap_or_default();
+    let (score, hard_fail) = parse_judge(&jtext);
+
+    st.promotion.record(crate::promotion::JudgeRecord {
+        ts: now_secs(),
+        task_label: label,
+        pass: score >= 3 && !hard_fail,
+        hard_fail,
+        score,
+        source: "judge".to_string(),
+        recon_e: None,
+        born_conf: None,
+        judge_tokens,
+    });
 }
