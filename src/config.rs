@@ -10,10 +10,18 @@ use std::path::PathBuf;
 /// `~/.cortiq-gateway` — so defaults work regardless of the process CWD
 /// (important once the gateway is installed rather than run from its repo).
 pub fn data_dir() -> PathBuf {
-    for (var, sub) in [("CORTIQ_GATEWAY_HOME", ""), ("XDG_DATA_HOME", "cortiq-gateway"), ("HOME", ".cortiq-gateway")] {
+    for (var, sub) in [
+        ("CORTIQ_GATEWAY_HOME", ""),
+        ("XDG_DATA_HOME", "cortiq-gateway"),
+        ("HOME", ".cortiq-gateway"),
+    ] {
         if let Ok(v) = std::env::var(var) {
             if !v.is_empty() {
-                return if sub.is_empty() { PathBuf::from(v) } else { PathBuf::from(v).join(sub) };
+                return if sub.is_empty() {
+                    PathBuf::from(v)
+                } else {
+                    PathBuf::from(v).join(sub)
+                };
             }
         }
     }

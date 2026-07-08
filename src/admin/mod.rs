@@ -169,7 +169,10 @@ pub fn api_routes(admin_token: String) -> Router<SharedState> {
         .route("/admin/api/shadow", get(get_shadow))
         .route("/admin/api/hf/search", get(hf_search))
         .route("/admin/api/import", get(list_imports).post(start_import))
-        .route("/admin/api/import/:job", get(import_status).delete(delete_import))
+        .route(
+            "/admin/api/import/:job",
+            get(import_status).delete(delete_import),
+        )
         .route("/admin/api/import/:job/cancel", post(cancel_import))
         .route("/admin/api/import/:job/register", post(register_import))
         .route("/admin/api/cmf", get(cmf_status))
@@ -736,7 +739,11 @@ async fn cmf_port_check(State(state): State<SharedState>, Query(q): Query<PortQu
         if port_is_free(&host, port) {
             (true, "free", None)
         } else {
-            (false, "occupied by another process", next_free_port(&host, port))
+            (
+                false,
+                "occupied by another process",
+                next_free_port(&host, port),
+            )
         }
     })
     .await
@@ -974,10 +981,7 @@ async fn start_import(
     ok(json!({ "job": id }))
 }
 
-async fn import_status(
-    State(state): State<SharedState>,
-    Path(job): Path<String>,
-) -> ApiResult {
+async fn import_status(State(state): State<SharedState>, Path(job): Path<String>) -> ApiResult {
     match state.imports.get(&job) {
         Some(j) => ok(serde_json::to_value(j).unwrap_or_else(|_| json!({}))),
         None => Err(ApiError::not_found(format!("job '{job}' not found"))),
@@ -985,10 +989,7 @@ async fn import_status(
 }
 
 /// Cancel a running conversion: kills the converter and removes partial output.
-async fn cancel_import(
-    State(state): State<SharedState>,
-    Path(job): Path<String>,
-) -> ApiResult {
+async fn cancel_import(State(state): State<SharedState>, Path(job): Path<String>) -> ApiResult {
     if state.imports.get(&job).is_none() {
         return Err(ApiError::not_found(format!("job '{job}' not found")));
     }
@@ -997,10 +998,7 @@ async fn cancel_import(
 }
 
 /// Delete a finished conversion and its converted `.cmf` file(s) from disk.
-async fn delete_import(
-    State(state): State<SharedState>,
-    Path(job): Path<String>,
-) -> ApiResult {
+async fn delete_import(State(state): State<SharedState>, Path(job): Path<String>) -> ApiResult {
     if state.imports.get(&job).is_none() {
         return Err(ApiError::not_found(format!("job '{job}' not found")));
     }
@@ -1009,10 +1007,7 @@ async fn delete_import(
 }
 
 /// Register a finished `.cmf` as a local model (OpenAI provider → cortiq-server).
-async fn register_import(
-    State(state): State<SharedState>,
-    Path(job): Path<String>,
-) -> ApiResult {
+async fn register_import(State(state): State<SharedState>, Path(job): Path<String>) -> ApiResult {
     let j = state
         .imports
         .get(&job)

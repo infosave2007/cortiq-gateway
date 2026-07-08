@@ -18,7 +18,10 @@ use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn now_secs() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// One judgment of a local answer (JSONL line, replayed on startup).
@@ -62,14 +65,14 @@ pub enum PromotionState {
 #[derive(Clone, Debug)]
 pub struct PromotionCfg {
     pub enabled: bool,
-    pub window: usize,       // rolling judgments per label (W)
-    pub n_min: usize,        // min judgments before promotion is even considered
-    pub promote_lb: f64,     // Wilson-95 LB of pass must clear this
-    pub demote_pass: f64,    // point pass-rate below this → demote a served label
-    pub hardfail_ub_max: f64,// Wilson-95 UPPER bound of hard_fail must stay under this
-    pub soak: usize,         // extra Canary judgments before LocalServed
-    pub z: f64,              // 1.96 = 95%
-    pub file: Option<String>,// judge.jsonl path (append + replay)
+    pub window: usize,        // rolling judgments per label (W)
+    pub n_min: usize,         // min judgments before promotion is even considered
+    pub promote_lb: f64,      // Wilson-95 LB of pass must clear this
+    pub demote_pass: f64,     // point pass-rate below this → demote a served label
+    pub hardfail_ub_max: f64, // Wilson-95 UPPER bound of hard_fail must stay under this
+    pub soak: usize,          // extra Canary judgments before LocalServed
+    pub z: f64,               // 1.96 = 95%
+    pub file: Option<String>, // judge.jsonl path (append + replay)
 }
 
 impl Default for PromotionCfg {
@@ -92,7 +95,7 @@ struct LabelState {
     passes: VecDeque<bool>,     // rolling window of pass/fail
     hard_fails: VecDeque<bool>, // rolling window of hard_fail flags
     state: PromotionState,
-    soaked: usize,              // judgments accumulated while in Canary
+    soaked: usize, // judgments accumulated while in Canary
 }
 
 impl LabelState {
@@ -124,20 +127,29 @@ pub fn wilson_bound(s: usize, n: usize, z: f64, upper: bool) -> f64 {
     let denom = 1.0 + z2 / n;
     let centre = p + z2 / (2.0 * n);
     let margin = z * ((p * (1.0 - p) / n) + z2 / (4.0 * n * n)).sqrt();
-    let v = if upper { centre + margin } else { centre - margin };
+    let v = if upper {
+        centre + margin
+    } else {
+        centre - margin
+    };
     (v / denom).clamp(0.0, 1.0)
 }
 
 impl Promotion {
     pub fn new(cfg: PromotionCfg) -> std::sync::Arc<Self> {
-        let p = std::sync::Arc::new(Self { cfg, labels: Mutex::new(HashMap::new()) });
+        let p = std::sync::Arc::new(Self {
+            cfg,
+            labels: Mutex::new(HashMap::new()),
+        });
         p.replay();
         p
     }
 
     fn replay(&self) {
         let Some(path) = &self.cfg.file else { return };
-        let Ok(content) = std::fs::read_to_string(path) else { return };
+        let Ok(content) = std::fs::read_to_string(path) else {
+            return;
+        };
         for line in content.lines() {
             if let Ok(rec) = serde_json::from_str::<JudgeRecord>(line) {
                 self.apply(&rec);
@@ -151,8 +163,10 @@ impl Promotion {
         let st = self.apply(&rec);
         if let Some(path) = &self.cfg.file {
             if let Ok(line) = serde_json::to_string(&rec) {
-                if let Ok(mut f) =
-                    std::fs::OpenOptions::new().create(true).append(true).open(path)
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
                 {
                     let _ = writeln!(f, "{line}");
                 }
@@ -163,7 +177,9 @@ impl Promotion {
 
     fn apply(&self, rec: &JudgeRecord) -> PromotionState {
         let mut map = self.labels.lock().unwrap();
-        let ls = map.entry(rec.task_label.clone()).or_insert_with(LabelState::new);
+        let ls = map
+            .entry(rec.task_label.clone())
+            .or_insert_with(LabelState::new);
         push_cap(&mut ls.passes, rec.pass, self.cfg.window);
         push_cap(&mut ls.hard_fails, rec.hard_fail, self.cfg.window);
         self.advance(ls);
@@ -188,7 +204,12 @@ impl Promotion {
 
         ls.state = match ls.state {
             PromotionState::CloudOnly | PromotionState::ShadowJudged => {
-                if bar { ls.soaked = 0; PromotionState::Canary } else { PromotionState::ShadowJudged }
+                if bar {
+                    ls.soaked = 0;
+                    PromotionState::Canary
+                } else {
+                    PromotionState::ShadowJudged
+                }
             }
             PromotionState::Canary => {
                 if regressed {
@@ -203,7 +224,11 @@ impl Promotion {
                 }
             }
             PromotionState::LocalServed => {
-                if regressed { PromotionState::Demoted } else { PromotionState::LocalServed }
+                if regressed {
+                    PromotionState::Demoted
+                } else {
+                    PromotionState::LocalServed
+                }
             }
             // Demoted goes back to SHADOW to re-earn promotion (skill stays in .cmf).
             PromotionState::Demoted => PromotionState::ShadowJudged,
@@ -223,7 +248,10 @@ impl Promotion {
     /// Should a request of this label be SERVED by the local model?
     /// (Canary/LocalServed; caller still applies the per-request veto.)
     pub fn serves_local(&self, label: &str) -> bool {
-        matches!(self.state(label), PromotionState::Canary | PromotionState::LocalServed)
+        matches!(
+            self.state(label),
+            PromotionState::Canary | PromotionState::LocalServed
+        )
     }
 
     /// Snapshot for /admin: (state, n, pass-rate, Wilson-LB) per label.
@@ -235,7 +263,13 @@ impl Promotion {
                 let n = ls.passes.len();
                 let s = ls.passes.iter().filter(|&&p| p).count();
                 let p = if n > 0 { s as f64 / n as f64 } else { 0.0 };
-                (k.clone(), ls.state, n, p, wilson_bound(s, n, self.cfg.z, false))
+                (
+                    k.clone(),
+                    ls.state,
+                    n,
+                    p,
+                    wilson_bound(s, n, self.cfg.z, false),
+                )
             })
             .collect();
         out.sort_by(|a, b| b.2.cmp(&a.2));
@@ -259,12 +293,24 @@ mod tests {
     use super::*;
 
     fn cfg() -> PromotionCfg {
-        PromotionCfg { enabled: true, n_min: 200, soak: 0, ..Default::default() }
+        PromotionCfg {
+            enabled: true,
+            n_min: 200,
+            soak: 0,
+            ..Default::default()
+        }
     }
     fn rec(label: &str, pass: bool, hard_fail: bool) -> JudgeRecord {
         JudgeRecord {
-            ts: 0, task_label: label.into(), pass, hard_fail, score: if pass { 4 } else { 0 },
-            source: "checker".into(), recon_e: None, born_conf: None, judge_tokens: 0,
+            ts: 0,
+            task_label: label.into(),
+            pass,
+            hard_fail,
+            score: if pass { 4 } else { 0 },
+            source: "checker".into(),
+            recon_e: None,
+            born_conf: None,
+            judge_tokens: 0,
         }
     }
 
@@ -316,7 +362,10 @@ mod tests {
             match row {
                 Some((_, st, n, pr, lb)) => println!(
                     "    {label:<12} {:<13} n={n:<4} pass={:.0}% LB={:.3} serves_local={}",
-                    format!("{st:?}"), pr * 100.0, lb, p.serves_local(label)
+                    format!("{st:?}"),
+                    pr * 100.0,
+                    lb,
+                    p.serves_local(label)
                 ),
                 None => println!("    {label:<12} (cloud-only, no judgments)"),
             }
@@ -324,19 +373,29 @@ mod tests {
 
         println!("\n── self-warming loop, live ──");
         // A mature skill (e.g. ru-tech): local answers pass the judge ~99%.
-        println!("  1) SHADOW→CANARY: судим локаль 'ru_tech' (сильный скилл ~99% pass), 210 судейств:");
+        println!(
+            "  1) SHADOW→CANARY: судим локаль 'ru_tech' (сильный скилл ~99% pass), 210 судейств:"
+        );
         for i in 0..210 {
             p.record(rec("ru_tech", i % 100 != 0, false));
         }
         show("ru_tech");
-        assert_eq!(p.state("ru_tech"), PromotionState::Canary, "n≥200 & LB≥0.95 → CANARY");
+        assert_eq!(
+            p.state("ru_tech"),
+            PromotionState::Canary,
+            "n≥200 & LB≥0.95 → CANARY"
+        );
 
         println!("  2) CANARY soak (ещё 60 судейств держат планку) → LOCAL_SERVED:");
         for i in 0..60 {
             p.record(rec("ru_tech", i % 100 != 0, false));
         }
         show("ru_tech");
-        assert_eq!(p.state("ru_tech"), PromotionState::LocalServed, "soak → LOCAL_SERVED");
+        assert_eq!(
+            p.state("ru_tech"),
+            PromotionState::LocalServed,
+            "soak → LOCAL_SERVED"
+        );
         assert!(p.serves_local("ru_tech"), "теперь обслуживается локально");
 
         // The code dataset: local fails the checker → never promotes.
@@ -345,7 +404,11 @@ mod tests {
             p.record(rec("code", false, false));
         }
         show("code");
-        assert_eq!(p.state("code"), PromotionState::ShadowJudged, "остаётся на облаке — безопасно");
+        assert_eq!(
+            p.state("code"),
+            PromotionState::ShadowJudged,
+            "остаётся на облаке — безопасно"
+        );
         assert!(!p.serves_local("code"));
 
         // Drift on the promoted label → auto-demote back to cloud.
@@ -376,6 +439,9 @@ mod tests {
         for _ in 0..300 {
             p2.record(rec("t", false, false)); // quality collapses
         }
-        assert!(matches!(p2.state("t"), PromotionState::Demoted | PromotionState::ShadowJudged));
+        assert!(matches!(
+            p2.state("t"),
+            PromotionState::Demoted | PromotionState::ShadowJudged
+        ));
     }
 }
