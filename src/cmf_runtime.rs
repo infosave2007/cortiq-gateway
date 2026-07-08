@@ -155,14 +155,19 @@ async fn cargo_install(force: bool) -> Result<(), String> {
 /// Spawn `cortiq serve <model> --host <host> --port <port>`; the child is killed
 /// when its handle is dropped (i.e. when the gateway shuts down).
 fn spawn_serve(cfg: &CmfCfg) -> Result<Child, String> {
-    Command::new(&cfg.cortiq_bin)
-        .arg("serve")
+    let mut cmd = Command::new(&cfg.cortiq_bin);
+    cmd.arg("serve")
         .arg(&cfg.local_model)
         .arg("--host")
         .arg(&cfg.local_host)
         .arg("--port")
-        .arg(cfg.local_port.to_string())
-        .stdout(Stdio::null())
+        .arg(cfg.local_port.to_string());
+    // Parallelise decode matvecs across cores (CMF_THREADS). 0 = leave the
+    // runtime's own default; N>1 gave ~2.8x on a 15B CPU model.
+    if cfg.threads > 1 {
+        cmd.env("CMF_THREADS", cfg.threads.to_string());
+    }
+    cmd.stdout(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(true)
         .spawn()
