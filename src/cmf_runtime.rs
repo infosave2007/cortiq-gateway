@@ -119,7 +119,7 @@ async fn latest_crates_version() -> Option<String> {
 }
 
 /// `<bin> --version` → the trailing version token (e.g. "cortiq 0.1.2" → "0.1.2").
-fn installed_version(bin: &str) -> Option<String> {
+pub(crate) fn installed_version(bin: &str) -> Option<String> {
     let out = std::process::Command::new(bin).arg("--version").output().ok()?;
     if !out.status.success() {
         return None;
@@ -149,6 +149,21 @@ async fn cargo_install(force: bool) -> Result<(), String> {
         Ok(())
     } else {
         Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Install/upgrade `cortiq-cli` from crates.io on demand (the admin "Install
+/// cortiq" button). Runs in the background; progress + result land in the CMF
+/// status log, and `installed_version` is refreshed on success.
+pub async fn install_now(rt: Arc<CmfRuntime>, bin: String) {
+    rt.log("installing cortiq-cli from crates.io (this compiles — a few minutes)…");
+    match cargo_install(true).await {
+        Ok(()) => {
+            let v = installed_version(&bin);
+            rt.status.lock().unwrap().installed_version = v.clone();
+            rt.log(format!("installed cortiq-cli {}", v.as_deref().unwrap_or("?")));
+        }
+        Err(e) => rt.fail(format!("cargo install cortiq-cli failed: {e}")),
     }
 }
 

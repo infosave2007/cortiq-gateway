@@ -177,6 +177,18 @@ textarea { resize: vertical; min-height: 64px; }
 .check input { width: auto; }
 .hint { color: var(--faint); font-size: 12px; margin-top: 4px; }
 
+/* "?" help badge — hover/focus shows the native title tooltip explaining a setting */
+.help {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--panel);
+  color: var(--muted); font-size: 10px; font-weight: 700; line-height: 1;
+  cursor: help; vertical-align: middle; user-select: none;
+  transition: 0.12s;
+}
+.help:hover, .help:focus { color: var(--accent); border-color: var(--accent); outline: none; }
+label.field > span .help { text-transform: none; }
+
 /* ---- buttons ------------------------------------------------------------- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
