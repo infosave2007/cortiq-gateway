@@ -426,7 +426,7 @@ async fn put_config(State(state): State<SharedState>, Json(cfg): Json<Config>) -
 
 async fn list_models(State(state): State<SharedState>) -> ApiResult {
     let live = state.live();
-    let models: Vec<Value> = live
+    let mut models: Vec<Value> = live
         .cfg
         .models
         .iter()
@@ -440,6 +440,31 @@ async fn list_models(State(state): State<SharedState>) -> ApiResult {
             v
         })
         .collect();
+
+    // The managed local CMF server is registered in the routing registry from
+    // the [cmf] flags, not from [[models]]. Surface it here (marked managed, so
+    // the UI shows it read-only) so the real running model is visible and
+    // pinnable without needing a hand-maintained static pool entry. A fresh
+    // install with no managed model still returns an empty list.
+    let cmf = &live.cfg.cmf;
+    if cmf.manage_server
+        && !cmf.local_model.trim().is_empty()
+        && !models.iter().any(|m| m["id"] == json!(cmf.model_id))
+    {
+        models.push(json!({
+            "id": cmf.model_id,
+            "provider": "openai",
+            "base_url": format!("http://{}:{}/v1", cmf.local_host, cmf.local_port),
+            "model": "cortiq",
+            "cost_tier": "local",
+            "price_in": 0.0,
+            "price_out": 0.0,
+            "kind": "chat",
+            "caps": [],
+            "key_source": "none",
+            "managed": true,
+        }));
+    }
     ok(json!({ "models": models }))
 }
 
@@ -473,15 +498,86 @@ async fn update_model(
     ok(json!({ "ok": true }))
 }
 
+/// Remove a `.cmf` path — it may be a plain file or a tensor-dir. Returns whether
+/// something was actually removed.
+fn remove_cmf_path(path: &std::path::Path) -> bool {
+    if path.is_dir() {
+        std::fs::remove_dir_all(path).is_ok()
+    } else if path.is_file() {
+        std::fs::remove_file(path).is_ok()
+    } else {
+        false
+    }
+}
+
+/// The local `.cmf` backing a pool model, if it is a local CMF model whose file
+/// lives under `models_dir`. Cloud models (real remote base_url) return None.
+/// Registered imports store `model` = the file stem under models_dir.
+fn cmf_file_for_model(
+    cmf: &crate::config::CmfCfg,
+    m: &crate::config::ModelCfg,
+) -> Option<std::path::PathBuf> {
+    let local = m.base_url == cmf.cortiq_server_url
+        || m.base_url
+            .contains(&format!("{}:{}", cmf.local_host, cmf.local_port));
+    let stem = m.model.trim();
+    if !local || stem.is_empty() || stem.contains('/') || stem.contains("..") {
+        return None; // not local, or an unsafe/underivable path
+    }
+    Some(std::path::Path::new(&cmf.models_dir).join(format!("{stem}.cmf")))
+}
+
+/// Drop a model id from routing (default + every tier) so `validate()` still
+/// passes after the model is gone.
+fn strip_id_from_routing(routing: &mut RoutingCfg, id: &str) {
+    if routing.default == id {
+        routing.default = String::new();
+    }
+    for tt in routing.tiers.values_mut() {
+        match tt {
+            crate::config::TierTargets::List(v) => v.retain(|x| x != id),
+            crate::config::TierTargets::One(s) if s == id => {
+                *tt = crate::config::TierTargets::List(Vec::new());
+            }
+            crate::config::TierTargets::One(_) => {}
+        }
+    }
+}
+
 async fn delete_model(State(state): State<SharedState>, Path(id): Path<String>) -> ApiResult {
     let mut cfg = current_cfg(&state);
+
+    // The managed local model lives in [cmf], not [[models]]. Deleting it stops
+    // the running server, clears the managed config, and removes its file.
+    if id == cfg.cmf.model_id
+        && cfg.cmf.manage_server
+        && !cfg.cmf.local_model.trim().is_empty()
+        && !cfg.models.iter().any(|x| x.id == id)
+    {
+        let file = cfg.cmf.local_model.clone();
+        cfg.cmf.local_model = String::new();
+        cfg.cmf.manage_server = false;
+        strip_id_from_routing(&mut cfg.routing, &id);
+        state.cmf.stop().await;
+        state.reload(cfg)?;
+        let file_removed = remove_cmf_path(std::path::Path::new(&file));
+        return ok(json!({ "ok": true, "file_removed": file_removed }));
+    }
+
+    let victim = cfg.models.iter().find(|x| x.id == id).cloned();
     let before = cfg.models.len();
     cfg.models.retain(|x| x.id != id);
     if cfg.models.len() == before {
         return Err(ApiError::not_found(format!("model '{id}' not found")));
     }
+    strip_id_from_routing(&mut cfg.routing, &id);
+    let file = victim
+        .as_ref()
+        .and_then(|m| cmf_file_for_model(&cfg.cmf, m));
     state.reload(cfg)?;
-    ok(json!({ "ok": true }))
+    // Physically remove the local .cmf after the config is persisted.
+    let file_removed = file.map(|p| remove_cmf_path(&p)).unwrap_or(false);
+    ok(json!({ "ok": true, "file_removed": file_removed }))
 }
 
 async fn probe_model(State(state): State<SharedState>, Path(id): Path<String>) -> ApiResult {

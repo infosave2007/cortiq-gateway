@@ -168,7 +168,8 @@ function row(m, meta, reload) {
   return h(
     "tr",
     {},
-    h("td", { class: "mono" }, m.id),
+    h("td", { class: "mono" }, m.id,
+      m.managed ? h("span", { class: "badge", style: "margin-left:6px", title: t("models.managedHint") }, t("models.managed")) : null),
     h("td", {}, m.provider),
     h("td", { class: "mono" }, m.model),
     h("td", {}, h("span", { class: "badge " + (m.cost_tier || "") }, m.cost_tier || "—")),
@@ -182,7 +183,7 @@ function row(m, meta, reload) {
         "div",
         { class: "flex", style: "justify-content:flex-end" },
         probeBtn,
-        h("button", { class: "btn sm ghost", onClick: () => openModal(meta, m, reload) }, t("common.edit")),
+        m.managed ? null : h("button", { class: "btn sm ghost", onClick: () => openModal(meta, m, reload) }, t("common.edit")),
         h(
           "button",
           {
