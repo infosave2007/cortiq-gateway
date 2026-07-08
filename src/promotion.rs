@@ -272,7 +272,7 @@ impl Promotion {
                 )
             })
             .collect();
-        out.sort_by(|a, b| b.2.cmp(&a.2));
+        out.sort_by_key(|x| std::cmp::Reverse(x.2));
         out
     }
 

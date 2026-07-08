@@ -730,7 +730,7 @@ fn parse_judge(text: &str) -> (u8, bool) {
     let score = text
         .split("score")
         .nth(1)
-        .and_then(|t| t.chars().skip_while(|c| !c.is_ascii_digit()).next())
+        .and_then(|t| t.chars().find(|c| c.is_ascii_digit()))
         .and_then(|c| c.to_digit(10))
         .map(|d| d.min(4) as u8);
     let hard_fail = text
