@@ -33,6 +33,7 @@ export default {
   "nav.playground": "Playground",
   "nav.settings": "Paramètres",
   "nav.foot": "Gateway · v{v}",
+  "nav.billing": "Clé routeur & facturation",
 
   // topbar / status
   "status.router": "Routeur",
@@ -40,6 +41,7 @@ export default {
   "status.online": "en ligne",
   "status.offline": "hors ligne",
   "status.checking": "vérification…",
+  "status.noKey": "pas de clé",
   "theme.toggle": "Thème",
   "logout": "Déconnexion",
 
@@ -88,6 +90,7 @@ export default {
   "dash.health.title": "Santé",
   "dash.health.reachable": "accessible",
   "dash.health.unreachable": "inaccessible",
+  "dash.health.getKey": "Obtenir une clé routeur",
 
   // models
   "models.title": "Modèles",
@@ -225,6 +228,18 @@ export default {
   "settings.router.timeout": "Délai d'expiration (ms)",
   "settings.router.verifyTls": "Vérifier le certificat TLS",
   "settings.router.taxonomy": "ID de taxonomie",
+  "settings.router.getKey": "Obtenir ou recharger une clé routeur sur",
+  "settings.router.secret": "Clé routeur (valeur)",
+  "settings.router.test": "Tester le routeur",
+  "router.probe.ok": "Routeur OK ({ms} ms)",
+  "router.probe.noKey": "La clé routeur n'est pas définie",
+  "router.probe.auth": "Clé rejetée — invalide ou révoquée",
+  "router.probe.payment": "Paiement requis — forfait expiré ou quota épuisé",
+  "router.probe.quota": "Limite de débit dépassée",
+  "router.probe.timeout": "Délai du routeur dépassé",
+  "router.probe.unreachable": "Routeur inaccessible",
+  "router.probe.error": "Erreur du routeur",
+  "router.usage": "Consommation",
   "settings.route": "Entrée de routage",
   "settings.route.strategy": "Stratégie de texte",
   "settings.route.maxChars": "Caractères max",

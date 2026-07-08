@@ -3,6 +3,7 @@ import { h, mount, money, num, ms, pct, timeAgo } from "../ui.js";
 import { t } from "../i18n.js";
 import { api } from "../api.js";
 import { lineChart, barList } from "../charts.js";
+import { SITE_URL } from "../app.js";
 
 const RANGES = ["1h", "24h", "7d"];
 const GROUPS = ["model", "tier", "label", "account"];
@@ -186,7 +187,19 @@ function recentTable(rows) {
   );
 }
 
+function keySourceLabel(src) {
+  if (src === "store") return t("models.form.secretStored");
+  if (src === "env") return t("models.form.secretEnv");
+  return t("models.form.secretMissing");
+}
+
 function healthCard(hh) {
+  const r = hh.router || {};
+  const keySrc = r.key_source || "none";
+  const err = r.last_error;
+  // problems fixed on the site (get / pay for a key) get the top-up link
+  const needsSite =
+    !r.reachable || keySrc === "missing" || (err && ["auth", "payment", "quota"].includes(err.kind));
   return h(
     "div",
     { class: "card" },
@@ -196,9 +209,20 @@ function healthCard(hh) {
       { class: "flex wrap", style: "margin-bottom:12px" },
       h(
         "span",
-        { class: "badge " + (hh.router?.reachable ? "ok" : "bad"), title: hh.router?.url || "" },
-        t("status.router") + ": " + (hh.router?.reachable ? t("dash.health.reachable") : t("dash.health.unreachable"))
-      )
+        { class: "badge " + (r.reachable ? "ok" : "bad"), title: r.url || "" },
+        t("status.router") + ": " + (r.reachable ? t("dash.health.reachable") : t("dash.health.unreachable"))
+      ),
+      keySrc !== "none"
+        ? h(
+            "span",
+            { class: "badge " + keyBadge(keySrc), title: r.key_env || "" },
+            t("models.col.key") + ": " + keySourceLabel(keySrc)
+          )
+        : null,
+      err ? h("span", { class: "badge bad" }, t("router.probe." + (err.kind || "error"))) : null,
+      needsSite
+        ? h("a", { href: SITE_URL, target: "_blank", rel: "noopener" }, t("dash.health.getKey") + " ↗")
+        : null
     ),
     h(
       "div",

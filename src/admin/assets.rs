@@ -16,11 +16,18 @@ use rust_embed::RustEmbed;
 struct WebAssets;
 
 fn serve_file(path: &str) -> Response {
+    // The panel is rebuilt often (assets are embedded at compile time and served
+    // from memory), so tell the browser to always revalidate — otherwise a stale
+    // cached SPA hides freshly shipped fixes until a hard reload.
+    const NO_CACHE: &str = "no-store, must-revalidate";
     match WebAssets::get(path) {
         Some(content) => {
             let mime = mime_guess::from_path(path).first_or_octet_stream();
             (
-                [(header::CONTENT_TYPE, mime.as_ref())],
+                [
+                    (header::CONTENT_TYPE, mime.as_ref()),
+                    (header::CACHE_CONTROL, NO_CACHE),
+                ],
                 content.data.into_owned(),
             )
                 .into_response()
@@ -29,7 +36,10 @@ fn serve_file(path: &str) -> Response {
             // SPA: unknown path under /admin → serve index.html
             match WebAssets::get("index.html") {
                 Some(content) => (
-                    [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                    [
+                        (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+                        (header::CACHE_CONTROL, NO_CACHE),
+                    ],
                     content.data.into_owned(),
                 )
                     .into_response(),

@@ -5,6 +5,7 @@ import { api, getToken, setToken, setUnauthorizedHandler } from "./api.js";
 import { renderLogin } from "./views/login.js";
 import { renderDashboard } from "./views/dashboard.js";
 import { renderModels } from "./views/models.js";
+import { renderImport } from "./views/import.js";
 import { renderRouting } from "./views/routing.js";
 import { renderProtocols } from "./views/protocols.js";
 import { renderKeys } from "./views/keys.js";
@@ -14,6 +15,7 @@ import { renderSettings } from "./views/settings.js";
 const ROUTES = [
   { id: "dashboard", icon: "▤", view: renderDashboard },
   { id: "models", icon: "▦", view: renderModels },
+  { id: "import", icon: "⬇", view: renderImport },
   { id: "routing", icon: "⇄", view: renderRouting },
   { id: "protocols", icon: "⇆", view: renderProtocols },
   { id: "keys", icon: "🔑", view: renderKeys },
@@ -22,6 +24,9 @@ const ROUTES = [
 ];
 
 export const appState = { meta: null, health: null, version: "" };
+
+// allaigate site — where router keys are issued and topped up
+export const SITE_URL = "https://api.allaigate.com/";
 
 function currentRoute() {
   const id = location.hash.replace(/^#\/?/, "") || "dashboard";
@@ -53,6 +58,13 @@ function sidebar(activeId) {
       )
     ),
     h("div", { class: "nav-spacer" }),
+    h(
+      "a",
+      { class: "nav-item", href: SITE_URL, target: "_blank", rel: "noopener" },
+      h("span", { class: "ico" }, "◈"),
+      t("nav.billing"),
+      h("span", { style: "margin-left:auto;opacity:.55" }, "↗")
+    ),
     h("div", { class: "nav-foot" }, t("nav.foot", { v: appState.version || "—" }))
   );
 }
@@ -61,6 +73,16 @@ function statusPills() {
   const h_ = appState.health;
   const gwOk = !!appState.meta;
   const routerOk = h_?.router?.reachable;
+  // reachable but no key resolves → warn: routing silently degrades to default
+  const keyMissing = h_?.router?.key_source === "missing";
+  const routerDot = h_ ? (routerOk ? (keyMissing ? "warn" : "ok") : "bad") : "warn";
+  const routerText = h_
+    ? routerOk
+      ? keyMissing
+        ? t("status.noKey")
+        : t("status.online")
+      : t("status.offline")
+    : t("status.checking");
   return h(
     "div",
     { class: "flex" },
@@ -73,8 +95,8 @@ function statusPills() {
     h(
       "span",
       { class: "pill", title: h_?.router?.url || "" },
-      h("span", { class: "dot " + (h_ ? (routerOk ? "ok" : "bad") : "warn") }),
-      t("status.router") + ": " + (h_ ? (routerOk ? t("status.online") : t("status.offline")) : t("status.checking"))
+      h("span", { class: "dot " + routerDot }),
+      t("status.router") + ": " + routerText
     )
   );
 }
