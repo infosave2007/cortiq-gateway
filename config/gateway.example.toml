@@ -28,40 +28,29 @@ cache_ttl     = "60s"
 profile       = "balanced"    # cost-saver | balanced | quality-first
 
 # ============================================================================
-# Model pool. This example ships ONE local CMF model, served by the managed
-# cortiq server (see the [cmf] section below). Add more models — local or cloud —
-# by copying the [[models]] shape: provider = "openai"/"anthropic", and for a
-# hosted provider an api_key_env = "..." (never put secrets in this file).
+# Model pool — EMPTY by default. A fresh gateway starts with no models and an
+# empty pool; add them in the admin console (/admin → Models), or run a local
+# .cmf via the [cmf] section below. To add one by hand, copy this shape:
+#
+#   [[models]]
+#   id        = "my-model"
+#   provider  = "openai"                    # openai | anthropic (openai also covers
+#   base_url  = "http://127.0.0.1:8081/v1"  #   OpenRouter/Together/Groq/vLLM/Ollama)
+#   model     = "my-model"
+#   # api_key_env = "OPENAI_API_KEY"        # for hosted providers (never inline a key)
+#   cost_tier = "local"
+#   caps      = ["tools"]
 # ============================================================================
-
-[[models]]
-id        = "cmf-local"
-provider  = "openai"
-base_url  = "http://127.0.0.1:8081/v1"   # the managed cortiq server (see [cmf])
-model     = "cmf-local"
-cost_tier = "local"
-price_in  = 0.0
-price_out = 0.0
-caps      = ["tools"]
-
-# --- embedding model (optional: /v1/embeddings + the semantic cache) ---------
-[[models]]
-id          = "local-embed"
-provider    = "openai"
-base_url    = "http://localhost:8000/v1"   # a local embeddings server (vLLM / llama.cpp / Ollama)
-model       = "nomic-embed-text"
-cost_tier   = "local"
-kind        = "embedding"
 
 # ============================================================================
 # Routing table: complexity tier → ordered pool (priority = fallback chain).
-# Add cloud models above and list them here for cost/quality-based fallback.
+# Leave default empty for a fresh install; set it to a model id once you add one.
 # ============================================================================
 [routing]
-low     = ["cmf-local"]
-medium  = ["cmf-local"]
-high    = ["cmf-local"]
-default = "cmf-local"        # used when the router is unreachable
+low     = []
+medium  = []
+high    = []
+default = ""                 # set to a model id once you add one
 
 [routing.policy]
 mode = "fixed_table"           # fixed_table | cost_aware
