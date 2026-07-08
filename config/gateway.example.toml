@@ -28,60 +28,40 @@ cache_ttl     = "60s"
 profile       = "balanced"    # cost-saver | balanced | quality-first
 
 # ============================================================================
-# Model pool: mix cheap local models and expensive cloud ones.
-# provider = "openai" covers OpenAI, OpenRouter, Together, Groq, and also
-# LOCAL servers vLLM / llama.cpp / LM Studio / Ollama (/v1).
+# Model pool. This example ships ONE local CMF model, served by the managed
+# cortiq server (see the [cmf] section below). Add more models — local or cloud —
+# by copying the [[models]] shape: provider = "openai"/"anthropic", and for a
+# hosted provider an api_key_env = "..." (never put secrets in this file).
 # ============================================================================
 
 [[models]]
-id        = "local-qwen"
+id        = "cmf-local"
 provider  = "openai"
-base_url  = "http://localhost:8000/v1"
-model     = "qwen2.5-7b-instruct"
-cost_tier = "cheap"
+base_url  = "http://127.0.0.1:8081/v1"   # the managed cortiq server (see [cmf])
+model     = "cmf-local"
+cost_tier = "local"
 price_in  = 0.0
 price_out = 0.0
 caps      = ["tools"]
 
-[[models]]
-id          = "gpt-4o-mini"
-provider    = "openai"
-base_url    = "https://api.openai.com/v1"
-model       = "gpt-4o-mini"
-api_key_env = "OPENAI_API_KEY"
-cost_tier   = "mid"
-price_in    = 0.15
-price_out   = 0.60
-caps        = ["tools", "vision"]
-
-[[models]]
-id          = "claude-opus"
-provider    = "anthropic"
-base_url    = "https://api.anthropic.com"
-model       = "claude-opus-4"
-api_key_env = "ANTHROPIC_API_KEY"
-cost_tier   = "expensive"
-price_in    = 15.0
-price_out   = 75.0
-caps        = ["tools", "vision"]
-
-# --- embedding model (for /v1/embeddings in provider mode) ------------------
+# --- embedding model (optional: /v1/embeddings + the semantic cache) ---------
 [[models]]
 id          = "local-embed"
 provider    = "openai"
-base_url    = "http://localhost:8000/v1"
+base_url    = "http://localhost:8000/v1"   # a local embeddings server (vLLM / llama.cpp / Ollama)
 model       = "nomic-embed-text"
-cost_tier   = "cheap"
+cost_tier   = "local"
 kind        = "embedding"
 
 # ============================================================================
-# Routing table: complexity tier → ordered pool (priority = fallback chain)
+# Routing table: complexity tier → ordered pool (priority = fallback chain).
+# Add cloud models above and list them here for cost/quality-based fallback.
 # ============================================================================
 [routing]
-low     = ["local-qwen"]
-medium  = ["gpt-4o-mini", "local-qwen"]
-high    = ["claude-opus", "gpt-4o-mini"]
-default = "gpt-4o-mini"        # used when the router is unreachable
+low     = ["cmf-local"]
+medium  = ["cmf-local"]
+high    = ["cmf-local"]
+default = "cmf-local"        # used when the router is unreachable
 
 [routing.policy]
 mode = "fixed_table"           # fixed_table | cost_aware
@@ -118,7 +98,7 @@ echo = true     # add a "cortiq" field to the response body (X-Cortiq-* headers 
 key          = "sk-gw-team-a"
 account      = "team-a"
 rate_per_min = 600
-# allow_models = ["cortiq-auto", "local-qwen"]   # restrict available models (optional)
+# allow_models = ["cortiq-auto", "cmf-local"]   # restrict available models (optional)
 
 # --- idempotency and logging ------------------------------------------------
 [idempotency]
@@ -162,3 +142,21 @@ threshold   = 0.92                  # cosine similarity for a hit (0..1)
 ttl         = "1h"
 max_entries = 1000
 # embed_model = "local-embed"       # defaults to the first kind = "embedding" model
+
+# ============================================================================
+# Local CMF model server. The gateway can install/run a local .cmf via cortiq
+# (github.com/infosave2007/cmf) and register it as the "cmf-local" model above,
+# so it works even when the router and cloud providers are unavailable.
+# Changes to manage_server / local_model / threads / gpu apply on restart.
+# ============================================================================
+[cmf]
+manage_server = false                # true → gateway spawns `cortiq serve` at startup
+local_model   = "models/model.cmf"   # path to the .cmf to serve
+local_host    = "127.0.0.1"
+local_port    = 8081                  # must match the cmf-local base_url above
+model_id      = "cmf-local"           # id it registers under (matches [[models]])
+threads       = 8                     # decode worker threads (CMF_THREADS); ~3x vs serial
+gpu           = false                 # offload matvecs to GPU (Metal/wgpu); mainly a prefill win
+cortiq_bin    = "cortiq"             # the cortiq CLI (cargo install cortiq-cli)
+auto_install  = false                # install cortiq-cli from crates.io if the binary is missing
+local_only    = false                # true → route every request to the local model
