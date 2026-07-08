@@ -599,7 +599,12 @@ impl Config {
         // is what lets the gateway run on local models alone (no cloud, no router).
         let has_local = self.cmf.manage_server && !self.cmf.local_model.trim().is_empty();
         if self.models.is_empty() && !has_local {
-            anyhow::bail!("config: at least one [[models]] entry (or a managed local CMF model) is required");
+            // Fresh install: start with an EMPTY model pool so the admin console
+            // comes up — the user adds models in /admin → Models (or points [cmf]
+            // at a local .cmf). Routing simply has nothing to select until then.
+            tracing::warn!(
+                "no models configured — starting with an empty pool; add one in /admin → Models"
+            );
         }
         // uniqueness of model ids
         let mut seen = std::collections::HashSet::new();
