@@ -184,7 +184,7 @@ impl JobStore {
     }
     pub fn list(&self) -> Vec<Job> {
         let mut v: Vec<Job> = self.jobs.lock().unwrap().values().cloned().collect();
-        v.sort_by(|a, b| b.started.cmp(&a.started));
+        v.sort_by_key(|x| std::cmp::Reverse(x.started));
         v.truncate(20);
         v
     }
