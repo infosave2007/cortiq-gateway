@@ -267,9 +267,21 @@ impl Pipeline {
             }
         }
 
-        // Local-first safety net: if routing produced no usable candidate (e.g.
-        // an unknown pinned model while the router is off), fall back to the
-        // managed local model so a configured local backend still answers.
+        // An explicit pin must never silently answer from a different model: if
+        // the pinned id is unknown or was filtered out, fail loudly so the caller
+        // knows their choice was not honoured (instead of getting a stray reply
+        // from the managed local model via the safety net below).
+        if final_candidates.is_empty() {
+            if let RoutingDirective::Pinned { model_id } = &req.routing {
+                return Err(GatewayError::UpstreamUnavailable(format!(
+                    "pinned model '{model_id}' is not available — it is not in the pool (deleted?) or lacks a required capability such as tools"
+                )));
+            }
+        }
+
+        // Local-first safety net: for AUTO/degraded routes only, if routing
+        // produced no usable candidate, fall back to the managed local model so a
+        // configured local backend still answers.
         if final_candidates.is_empty() && live.cfg.cmf.manage_server {
             for id in live.local_candidates() {
                 if let Some(prov) = live.registry.get(&id) {

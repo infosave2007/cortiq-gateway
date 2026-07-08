@@ -129,6 +129,8 @@ export default {
   "models.form.secretMissing": "not set",
   "models.form.secretPlaceholder": "set or replace key (write-only)",
   "models.deleteConfirm": "Delete model \"{id}\"?",
+  "models.managed": "managed",
+  "models.managedHint": "Provided by the managed CMF server (Settings → Local models). Configure it there.",
 
   // routing
   "routing.title": "Routing",

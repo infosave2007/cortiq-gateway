@@ -128,6 +128,8 @@ export default {
   "models.form.secretMissing": "не задан",
   "models.form.secretPlaceholder": "задать или заменить ключ (только запись)",
   "models.deleteConfirm": "Удалить модель \"{id}\"?",
+  "models.managed": "управляемая",
+  "models.managedHint": "Предоставляется CMF-сервером (Настройки → Локальные модели). Настраивается там.",
 
   // routing
   "routing.title": "Роутинг",
