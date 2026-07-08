@@ -111,6 +111,11 @@ pub struct CmfCfg {
     /// the router and any external providers ("use only local models").
     #[serde(default)]
     pub local_only: bool,
+    /// Worker threads for the managed `cortiq serve` (exported as `CMF_THREADS`).
+    /// 0 = let the runtime decide; N>1 parallelises decode matvecs across N cores
+    /// (measured ~2.8x faster than serial on a 15B model). Default 8.
+    #[serde(default = "default_cmf_threads")]
+    pub threads: usize,
 }
 impl Default for CmfCfg {
     fn default() -> Self {
@@ -129,8 +134,12 @@ impl Default for CmfCfg {
             local_port: default_cmf_local_port(),
             model_id: default_cmf_model_id(),
             local_only: false,
+            threads: default_cmf_threads(),
         }
     }
+}
+fn default_cmf_threads() -> usize {
+    8
 }
 fn default_cortiq_bin() -> String {
     "cortiq".into()
