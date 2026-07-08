@@ -31,13 +31,19 @@ fn cleanup_output(path: &str) {
 }
 
 fn now() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
 }
 
 /// Job id from a hash of (repo, nanos) — unique without a uuid dependency.
 fn gen_id(repo: &str) -> String {
     use std::hash::{Hash, Hasher};
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
     let mut h = std::collections::hash_map::DefaultHasher::new();
     repo.hash(&mut h);
     nanos.hash(&mut h);
@@ -82,8 +88,8 @@ pub struct Job {
     pub started: u64,
     pub finished: Option<u64>,
     pub size_bytes: Option<u64>,
-    pub progress: Option<f32>,  // 0..1, parsed from converter @PROGRESS
-    pub phase: Option<String>,  // current phase label
+    pub progress: Option<f32>, // 0..1, parsed from converter @PROGRESS
+    pub phase: Option<String>, // current phase label
 }
 
 #[derive(Default)]
@@ -185,9 +191,17 @@ impl JobStore {
 }
 
 /// Proxy HuggingFace model search (avoids browser CORS + adds our token).
-pub async fn hf_search(query: &str, limit: usize, token: Option<&str>) -> Result<serde_json::Value, String> {
+pub async fn hf_search(
+    query: &str,
+    limit: usize,
+    token: Option<&str>,
+) -> Result<serde_json::Value, String> {
     let q: String = url_escape(query);
-    let sort = if query.trim().is_empty() { "trendingScore" } else { "downloads" };
+    let sort = if query.trim().is_empty() {
+        "trendingScore"
+    } else {
+        "downloads"
+    };
     let url = format!(
         "https://huggingface.co/api/models?search={q}&sort={sort}&direction=-1&limit={limit}&full=false"
     );
@@ -218,7 +232,13 @@ fn url_escape(s: &str) -> String {
 
 fn sanitize(s: &str) -> String {
     s.chars()
-        .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect()
 }
 
@@ -244,7 +264,10 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
     // doesn't support yet (linear-attention folding, v-bit shaping).
     let use_python = p.linear_core.is_some() || p.vbit_shape.is_some() || p.mean_bits.is_some();
     if use_python && !std::path::Path::new(&cfg.converter).exists() {
-        return Err(format!("advanced options need the Python converter, not found: {}", cfg.converter));
+        return Err(format!(
+            "advanced options need the Python converter, not found: {}",
+            cfg.converter
+        ));
     }
     let _ = std::fs::create_dir_all(&cfg.models_dir);
     let base = if p.name.trim().is_empty() {
@@ -288,18 +311,43 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
     let (program, args, workdir): (String, Vec<String>, std::path::PathBuf) = if use_python {
         let conv = std::path::Path::new(&cfg.converter);
         let mut a = vec![
-            std::fs::canonicalize(conv).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| cfg.converter.clone()),
-            "--model".into(), p.repo.clone(),
-            "--quant".into(), p.quant.clone(),
-            "--output".into(), output_abs.clone(),
+            std::fs::canonicalize(conv)
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| cfg.converter.clone()),
+            "--model".into(),
+            p.repo.clone(),
+            "--quant".into(),
+            p.quant.clone(),
+            "--output".into(),
+            output_abs.clone(),
         ];
-        if let Some(lc) = &p.linear_core { a.push("--linear-core".into()); a.push(lc.clone()); }
-        if let Some(n) = p.nphase { a.push("--nphase".into()); a.push(n.to_string()); }
-        if let Some(vs) = &p.vbit_shape { a.push("--vbit-shape".into()); a.push(vs.clone()); }
-        if let Some(mb) = p.mean_bits { a.push("--mean-bits".into()); a.push(mb.to_string()); }
-        if let Some(g) = p.shard_max_gb { a.push("--shard-max-gb".into()); a.push(g.to_string()); }
-        if p.skip_mtp { a.push("--skip-mtp".into()); }
-        let wd = conv.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| std::path::PathBuf::from("."));
+        if let Some(lc) = &p.linear_core {
+            a.push("--linear-core".into());
+            a.push(lc.clone());
+        }
+        if let Some(n) = p.nphase {
+            a.push("--nphase".into());
+            a.push(n.to_string());
+        }
+        if let Some(vs) = &p.vbit_shape {
+            a.push("--vbit-shape".into());
+            a.push(vs.clone());
+        }
+        if let Some(mb) = p.mean_bits {
+            a.push("--mean-bits".into());
+            a.push(mb.to_string());
+        }
+        if let Some(g) = p.shard_max_gb {
+            a.push("--shard-max-gb".into());
+            a.push(g.to_string());
+        }
+        if p.skip_mtp {
+            a.push("--skip-mtp".into());
+        }
+        let wd = conv
+            .parent()
+            .map(|d| d.to_path_buf())
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
         (cfg.python_bin.clone(), a, wd)
     } else if p.repo.to_ascii_lowercase().contains("gguf") {
         // GGUF repo → native `cortiq import-gguf` (downloads + dequantizes any
@@ -307,21 +355,40 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
         let mut a = vec![
             "import-gguf".into(),
             p.repo.clone(),
-            "--quant".into(), map_quant(&p.quant).into(),
-            "--output".into(), output_abs.clone(),
+            "--quant".into(),
+            map_quant(&p.quant).into(),
+            "--output".into(),
+            output_abs.clone(),
         ];
-        if let Some(t) = &hf_token { a.push("--hf-token".into()); a.push(t.clone()); }
-        (cfg.cortiq_bin.clone(), a, std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
+        if let Some(t) = &hf_token {
+            a.push("--hf-token".into());
+            a.push(t.clone());
+        }
+        (
+            cfg.cortiq_bin.clone(),
+            a,
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        )
     } else {
         // safetensors → native `cortiq convert` (dense / MoE / GatedDeltaNet).
         let mut a = vec![
             "convert".into(),
-            "--model".into(), p.repo.clone(),
-            "--quant".into(), map_quant(&p.quant).into(),
-            "--output".into(), output_abs.clone(),
+            "--model".into(),
+            p.repo.clone(),
+            "--quant".into(),
+            map_quant(&p.quant).into(),
+            "--output".into(),
+            output_abs.clone(),
         ];
-        if let Some(t) = &hf_token { a.push("--hf-token".into()); a.push(t.clone()); }
-        (cfg.cortiq_bin.clone(), a, std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
+        if let Some(t) = &hf_token {
+            a.push("--hf-token".into());
+            a.push(t.clone());
+        }
+        (
+            cfg.cortiq_bin.clone(),
+            a,
+            std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        )
     };
 
     let ret_id = id.clone();

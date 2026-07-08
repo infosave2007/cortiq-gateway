@@ -113,14 +113,15 @@ async fn latest_crates_version() -> Option<String> {
         .await
         .ok()?;
     let v: serde_json::Value = serde_json::from_str(&body).ok()?;
-    v["crate"]["newest_version"]
-        .as_str()
-        .map(|s| s.to_string())
+    v["crate"]["newest_version"].as_str().map(|s| s.to_string())
 }
 
 /// `<bin> --version` → the trailing version token (e.g. "cortiq 0.1.2" → "0.1.2").
 pub(crate) fn installed_version(bin: &str) -> Option<String> {
-    let out = std::process::Command::new(bin).arg("--version").output().ok()?;
+    let out = std::process::Command::new(bin)
+        .arg("--version")
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
@@ -130,7 +131,11 @@ pub(crate) fn installed_version(bin: &str) -> Option<String> {
 
 fn parse_ver(s: &str) -> (u32, u32, u32) {
     let mut it = s.split('.').map(|x| x.trim().parse::<u32>().unwrap_or(0));
-    (it.next().unwrap_or(0), it.next().unwrap_or(0), it.next().unwrap_or(0))
+    (
+        it.next().unwrap_or(0),
+        it.next().unwrap_or(0),
+        it.next().unwrap_or(0),
+    )
 }
 
 fn version_lt(a: &str, b: &str) -> bool {
@@ -161,7 +166,10 @@ pub async fn install_now(rt: Arc<CmfRuntime>, bin: String) {
         Ok(()) => {
             let v = installed_version(&bin);
             rt.status.lock().unwrap().installed_version = v.clone();
-            rt.log(format!("installed cortiq-cli {}", v.as_deref().unwrap_or("?")));
+            rt.log(format!(
+                "installed cortiq-cli {}",
+                v.as_deref().unwrap_or("?")
+            ));
         }
         Err(e) => rt.fail(format!("cargo install cortiq-cli failed: {e}")),
     }
@@ -245,7 +253,9 @@ pub async fn manage(rt: Arc<CmfRuntime>, cfg: CmfCfg) {
                 rt.log("installed cortiq-cli");
             }
         } else {
-            rt.fail("cortiq binary not found (set [cmf].auto_install = true, or install cortiq-cli)");
+            rt.fail(
+                "cortiq binary not found (set [cmf].auto_install = true, or install cortiq-cli)",
+            );
             return;
         }
     }
@@ -255,8 +265,15 @@ pub async fn manage(rt: Arc<CmfRuntime>, cfg: CmfCfg) {
     if cfg.auto_update {
         if let Some(latest) = latest_crates_version().await {
             rt.status.lock().unwrap().latest_version = Some(latest.clone());
-            if ver.as_deref().map(|c| version_lt(c, &latest)).unwrap_or(false) {
-                rt.log(format!("updating cortiq-cli {} → {latest}…", ver.as_deref().unwrap_or("?")));
+            if ver
+                .as_deref()
+                .map(|c| version_lt(c, &latest))
+                .unwrap_or(false)
+            {
+                rt.log(format!(
+                    "updating cortiq-cli {} → {latest}…",
+                    ver.as_deref().unwrap_or("?")
+                ));
                 if let Err(e) = cargo_install(true).await {
                     rt.log(format!("update failed (keeping current): {e}"));
                 } else {

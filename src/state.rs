@@ -90,7 +90,11 @@ fn promotion_cfg(s: &crate::config::ShadowCfg) -> crate::promotion::PromotionCfg
         n_min: s.n_min,
         promote_lb: s.promote_lb,
         soak: s.soak,
-        file: if s.file.is_empty() { None } else { Some(s.file.clone()) },
+        file: if s.file.is_empty() {
+            None
+        } else {
+            Some(s.file.clone())
+        },
         ..Default::default()
     }
 }

@@ -208,15 +208,25 @@ impl Pipeline {
         };
 
         let (decision, route_source, candidates) = if live.cfg.cmf.local_only {
-            (mk("local-only", "local"), "local".to_string(), live.local_candidates())
+            (
+                mk("local-only", "local"),
+                "local".to_string(),
+                live.local_candidates(),
+            )
         } else {
             match &req.routing {
-                RoutingDirective::Pinned { model_id } => {
-                    (mk("pinned", "pinned"), "pinned".to_string(), vec![model_id.clone()])
-                }
+                RoutingDirective::Pinned { model_id } => (
+                    mk("pinned", "pinned"),
+                    "pinned".to_string(),
+                    vec![model_id.clone()],
+                ),
                 RoutingDirective::Auto { profile } => {
                     if !live.cfg.router.enabled {
-                        (mk("router-disabled", "local"), "local".to_string(), live.local_candidates())
+                        (
+                            mk("router-disabled", "local"),
+                            "local".to_string(),
+                            live.local_candidates(),
+                        )
                     } else {
                         let prof = profile.as_deref().unwrap_or(&live.cfg.route.profile);
                         match live.router.route(&text, prof).await {
@@ -229,7 +239,11 @@ impl Pipeline {
                                 tracing::warn!(
                                     "Router is unavailable. Gracefully degrading to the local/default model."
                                 );
-                                (mk("degraded", "fallback"), "fallback".to_string(), live.local_candidates())
+                                (
+                                    mk("degraded", "fallback"),
+                                    "fallback".to_string(),
+                                    live.local_candidates(),
+                                )
                             }
                         }
                     }
@@ -289,7 +303,10 @@ impl Pipeline {
             && !sh.local_model_id.is_empty()
             && matches!(req.routing, RoutingDirective::Auto { .. })
             && state.promotion.serves_local(&decision.task_label)
-            && !matches!(decision.complexity_tier.as_str(), "high" | "hard" | "complex")
+            && !matches!(
+                decision.complexity_tier.as_str(),
+                "high" | "hard" | "complex"
+            )
             && !final_candidates.iter().any(|m| m == &sh.local_model_id)
         {
             final_candidates.insert(0, sh.local_model_id.clone());
@@ -747,7 +764,10 @@ async fn shadow_capture(
     };
 
     // 1. Local answer (free, CPU).
-    let a_local = match local.chat(shadow_req(&cfg.local_model_id, clip(&prompt, 4000), 512)).await {
+    let a_local = match local
+        .chat(shadow_req(&cfg.local_model_id, clip(&prompt, 4000), 512))
+        .await
+    {
         Ok(r) => r
             .choices
             .into_iter()
