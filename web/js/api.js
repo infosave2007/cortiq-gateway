@@ -95,6 +95,11 @@ export const api = {
   // shadow / self-warming loop
   shadow: () => j("GET", "/shadow"),
 
+  // CMF runtime (the `cortiq` CLI that runs the .cmf format)
+  cmfStatus: () => j("GET", "/cmf"),
+  cmfInstall: () => j("POST", "/cmf/install"),
+  cmfPortCheck: (port) => j("GET", "/cmf/port?port=" + encodeURIComponent(port)),
+
   // CMF model factory (HuggingFace → local .cmf)
   hfSearch: (q, limit = 24) =>
     j("GET", `/hf/search?q=${encodeURIComponent(q || "")}&limit=${limit}`),

@@ -26,6 +26,7 @@ use axum::{
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::net::ToSocketAddrs;
 use std::time::Instant;
 
 // ───────────────────────────── common types / helpers ───────────────────────
@@ -171,6 +172,9 @@ pub fn api_routes(admin_token: String) -> Router<SharedState> {
         .route("/admin/api/import/:job", get(import_status).delete(delete_import))
         .route("/admin/api/import/:job/cancel", post(cancel_import))
         .route("/admin/api/import/:job/register", post(register_import))
+        .route("/admin/api/cmf", get(cmf_status))
+        .route("/admin/api/cmf/install", post(cmf_install))
+        .route("/admin/api/cmf/port", get(cmf_port_check))
         .route("/admin/api/requests", get(get_requests))
         .route("/admin/api/test", post(run_test))
         .route("/admin/api/test/stream", post(run_test_stream))
@@ -669,6 +673,107 @@ async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBo
     }
     state.reload(cfg)?;
     ok(json!({ "ok": true, "needs_restart": needs_restart }))
+}
+
+// ───────────────────────────── cmf runtime ─────────────────────────────────
+/// Status of the `cortiq` CLI (the CMF format runtime): is it installed, which
+/// version, and whether a managed server is running. Drives the "Install cortiq"
+/// button + status in the Settings → Local models card.
+async fn cmf_status(State(state): State<SharedState>) -> ApiResult {
+    let cmf = state.live().cfg.cmf.clone();
+    let ver = crate::cmf_runtime::installed_version(&cmf.cortiq_bin);
+    let st = state.cmf.status();
+    ok(json!({
+        "installed": ver.is_some(),
+        "version": ver,
+        "running": st.running,
+        "healthy": st.healthy,
+        "last_error": st.last_error,
+        "log": st.log,
+        // serving info so the card can show "serving <model> on :<port>"
+        "manage_server": cmf.manage_server,
+        "local_model": cmf.local_model,
+        "model_id": cmf.model_id,
+        "local_host": cmf.local_host,
+        "local_port": cmf.local_port,
+    }))
+}
+
+/// Install/upgrade the `cortiq` CLI from crates.io on demand (spawned in the
+/// background; poll `GET /admin/api/cmf` for `installed`/`version`).
+async fn cmf_install(State(state): State<SharedState>) -> ApiResult {
+    let bin = state.live().cfg.cmf.cortiq_bin.clone();
+    tokio::spawn(crate::cmf_runtime::install_now(state.cmf.clone(), bin));
+    ok(json!({ "started": true }))
+}
+
+#[derive(Deserialize)]
+struct PortQuery {
+    port: u16,
+}
+
+/// Check whether a TCP port is free to bind on the CMF local host, so a user can
+/// pick an available port before enabling the managed server (avoids clashing
+/// with something already on the default 8081). If the port is the one this
+/// gateway's own managed server already runs on, that is reported distinctly.
+/// When occupied, `suggested` holds the next free port so the UI can offer it.
+async fn cmf_port_check(State(state): State<SharedState>, Query(q): Query<PortQuery>) -> ApiResult {
+    let cmf = state.live().cfg.cmf.clone();
+    let host = if cmf.local_host.trim().is_empty() {
+        "127.0.0.1".to_string()
+    } else {
+        cmf.local_host.clone()
+    };
+    let st = state.cmf.status();
+    let port = q.port;
+    let running_here = port == cmf.local_port && st.running;
+
+    // The bind+connect probe is blocking std::net; run it off the async runtime.
+    let (available, detail, suggested) = tokio::task::spawn_blocking(move || {
+        if running_here {
+            return (false, "in use by this gateway's managed CMF server", None);
+        }
+        if port_is_free(&host, port) {
+            (true, "free", None)
+        } else {
+            (false, "occupied by another process", next_free_port(&host, port))
+        }
+    })
+    .await
+    .unwrap_or((false, "port check failed", None));
+
+    ok(json!({
+        "port": port,
+        "available": available,
+        "detail": detail,
+        "suggested": suggested,
+    }))
+}
+
+/// Whether `port` is truly free on `host`. A bind test alone is not enough: a
+/// Docker-published / dual-stack listener can leave an IPv4 bind succeeding even
+/// though connections to the port are forwarded to a container. So a port counts
+/// as free only if it is BOTH bindable AND nothing answers a connect attempt.
+fn port_is_free(host: &str, port: u16) -> bool {
+    if std::net::TcpListener::bind((host, port)).is_err() {
+        return false; // something is bound to exactly this address
+    }
+    // catch proxied/forwarded ports a bind test misses (e.g. Docker on macOS)
+    let reachable = (host, port)
+        .to_socket_addrs()
+        .ok()
+        .and_then(|mut it| it.next())
+        .map(|addr| {
+            std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_millis(200))
+                .is_ok()
+        })
+        .unwrap_or(false);
+    !reachable
+}
+
+/// First free port in (from, from+50], or None if all are taken.
+fn next_free_port(host: &str, from: u16) -> Option<u16> {
+    (from.saturating_add(1)..=from.saturating_add(50)).find(|p| port_is_free(host, *p))
 }
 
 // ───────────────────────────── keys ────────────────────────────────────────
