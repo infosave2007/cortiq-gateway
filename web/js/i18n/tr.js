@@ -33,6 +33,7 @@ export default {
   "nav.playground": "Oyun alanı",
   "nav.settings": "Ayarlar",
   "nav.foot": "Gateway · v{v}",
+  "nav.billing": "Router anahtarı ve ödeme",
 
   // topbar / status
   "status.router": "Yönlendirici",
@@ -40,6 +41,7 @@ export default {
   "status.online": "çevrimiçi",
   "status.offline": "çevrimdışı",
   "status.checking": "kontrol ediliyor…",
+  "status.noKey": "anahtar yok",
   "theme.toggle": "Tema",
   "logout": "Çıkış yap",
 
@@ -88,6 +90,7 @@ export default {
   "dash.health.title": "Sağlık",
   "dash.health.reachable": "erişilebilir",
   "dash.health.unreachable": "erişilemiyor",
+  "dash.health.getKey": "Router anahtarı al",
 
   // models
   "models.title": "Modeller",
@@ -225,6 +228,18 @@ export default {
   "settings.router.timeout": "Zaman aşımı (ms)",
   "settings.router.verifyTls": "TLS sertifikasını doğrula",
   "settings.router.taxonomy": "Taksonomi id",
+  "settings.router.getKey": "Router anahtarı almak veya bakiye yüklemek için:",
+  "settings.router.secret": "Router anahtarı (değer)",
+  "settings.router.test": "Router'ı test et",
+  "router.probe.ok": "Router çalışıyor ({ms} ms)",
+  "router.probe.noKey": "Router anahtarı ayarlanmadı",
+  "router.probe.auth": "Anahtar reddedildi — geçersiz veya iptal edilmiş",
+  "router.probe.payment": "Ödeme gerekli — plan süresi doldu veya kota tükendi",
+  "router.probe.quota": "Hız sınırı aşıldı",
+  "router.probe.timeout": "Router zaman aşımına uğradı",
+  "router.probe.unreachable": "Router erişilemiyor",
+  "router.probe.error": "Router hatası",
+  "router.usage": "Kullanım",
   "settings.route": "Yönlendirme girişi",
   "settings.route.strategy": "Metin stratejisi",
   "settings.route.maxChars": "Maks. karakter",

@@ -33,6 +33,7 @@ export default {
   "nav.playground": "Playground",
   "nav.settings": "Einstellungen",
   "nav.foot": "Gateway · v{v}",
+  "nav.billing": "Router-Key & Abrechnung",
 
   // topbar / status
   "status.router": "Router",
@@ -40,6 +41,7 @@ export default {
   "status.online": "online",
   "status.offline": "offline",
   "status.checking": "Prüfe…",
+  "status.noKey": "kein Key",
   "theme.toggle": "Design",
   "logout": "Abmelden",
 
@@ -88,6 +90,7 @@ export default {
   "dash.health.title": "Status",
   "dash.health.reachable": "erreichbar",
   "dash.health.unreachable": "nicht erreichbar",
+  "dash.health.getKey": "Router-Key holen",
 
   // models
   "models.title": "Modelle",
@@ -225,6 +228,18 @@ export default {
   "settings.router.timeout": "Timeout (ms)",
   "settings.router.verifyTls": "TLS-Zertifikat prüfen",
   "settings.router.taxonomy": "Taxonomie-ID",
+  "settings.router.getKey": "Router-Key holen oder aufladen:",
+  "settings.router.secret": "Router-Key (Wert)",
+  "settings.router.test": "Router testen",
+  "router.probe.ok": "Router OK ({ms} ms)",
+  "router.probe.noKey": "Router-Key ist nicht gesetzt",
+  "router.probe.auth": "Key abgelehnt — ungültig oder widerrufen",
+  "router.probe.payment": "Zahlung erforderlich — Tarif abgelaufen oder Kontingent erschöpft",
+  "router.probe.quota": "Ratenlimit überschritten",
+  "router.probe.timeout": "Router-Zeitüberschreitung",
+  "router.probe.unreachable": "Router nicht erreichbar",
+  "router.probe.error": "Router-Fehler",
+  "router.usage": "Verbrauch",
   "settings.route": "Routing-Eingabe",
   "settings.route.strategy": "Textstrategie",
   "settings.route.maxChars": "Max. Zeichen",

@@ -223,6 +223,17 @@ fn sanitize(s: &str) -> String {
 }
 
 /// Kick off a conversion. Returns the job id immediately; progress streams
+/// Map the UI quant label to the native `cortiq` quant flag.
+fn map_quant(q: &str) -> &'static str {
+    match q.to_ascii_uppercase().as_str() {
+        s if s.starts_with("Q4") => "q4",
+        "Q8_2F" => "q8_2f",
+        "F16" | "FP16" => "f16",
+        "VBIT" => "vbit",
+        _ => "q8",
+    }
+}
+
 /// into the job log. Fails fast if the converter script is missing.
 pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Result<String, String> {
     if p.repo.trim().is_empty() {
@@ -290,18 +301,23 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
         if p.skip_mtp { a.push("--skip-mtp".into()); }
         let wd = conv.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| std::path::PathBuf::from("."));
         (cfg.python_bin.clone(), a, wd)
+    } else if p.repo.to_ascii_lowercase().contains("gguf") {
+        // GGUF repo → native `cortiq import-gguf` (downloads + dequantizes any
+        // common ggml quant type: Q4_0/1, Q5_0/1, Q8_0, Q2_K..Q6_K, IQ4_NL/XS).
+        let mut a = vec![
+            "import-gguf".into(),
+            p.repo.clone(),
+            "--quant".into(), map_quant(&p.quant).into(),
+            "--output".into(), output_abs.clone(),
+        ];
+        if let Some(t) = &hf_token { a.push("--hf-token".into()); a.push(t.clone()); }
+        (cfg.cortiq_bin.clone(), a, std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")))
     } else {
-        // native Rust converter — quant name maps to cortiq's scheme.
-        let quant = match p.quant.to_ascii_uppercase().as_str() {
-            s if s.starts_with("Q4") => "q4",
-            "Q8_2F" => "q8_2f",
-            "F16" | "FP16" => "f16",
-            _ => "q8",
-        };
+        // safetensors → native `cortiq convert` (dense / MoE / GatedDeltaNet).
         let mut a = vec![
             "convert".into(),
             "--model".into(), p.repo.clone(),
-            "--quant".into(), quant.into(),
+            "--quant".into(), map_quant(&p.quant).into(),
             "--output".into(), output_abs.clone(),
         ];
         if let Some(t) = &hf_token { a.push("--hf-token".into()); a.push(t.clone()); }

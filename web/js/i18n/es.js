@@ -33,6 +33,7 @@ export default {
   "nav.playground": "Playground",
   "nav.settings": "Configuración",
   "nav.foot": "Gateway · v{v}",
+  "nav.billing": "Clave del router y pagos",
 
   // topbar / status
   "status.router": "Router",
@@ -40,6 +41,7 @@ export default {
   "status.online": "en línea",
   "status.offline": "sin conexión",
   "status.checking": "verificando…",
+  "status.noKey": "sin clave",
   "theme.toggle": "Tema",
   "logout": "Cerrar sesión",
 
@@ -88,6 +90,7 @@ export default {
   "dash.health.title": "Estado",
   "dash.health.reachable": "accesible",
   "dash.health.unreachable": "inaccesible",
+  "dash.health.getKey": "Obtener una clave del router",
 
   // models
   "models.title": "Modelos",
@@ -225,6 +228,18 @@ export default {
   "settings.router.timeout": "Tiempo de espera (ms)",
   "settings.router.verifyTls": "Verificar certificado TLS",
   "settings.router.taxonomy": "ID de taxonomía",
+  "settings.router.getKey": "Obtén o recarga una clave del router en",
+  "settings.router.secret": "Clave del router (valor)",
+  "settings.router.test": "Probar router",
+  "router.probe.ok": "Router OK ({ms} ms)",
+  "router.probe.noKey": "La clave del router no está configurada",
+  "router.probe.auth": "Clave rechazada — inválida o revocada",
+  "router.probe.payment": "Pago requerido — plan vencido o cuota agotada",
+  "router.probe.quota": "Límite de tasa excedido",
+  "router.probe.timeout": "Tiempo de espera del router agotado",
+  "router.probe.unreachable": "Router inaccesible",
+  "router.probe.error": "Error del router",
+  "router.usage": "Consumo",
   "settings.route": "Entrada de enrutamiento",
   "settings.route.strategy": "Estrategia de texto",
   "settings.route.maxChars": "Máx. caracteres",

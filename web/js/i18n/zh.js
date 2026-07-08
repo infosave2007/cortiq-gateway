@@ -33,6 +33,7 @@ export default {
   "nav.playground": "沙盒",
   "nav.settings": "设置",
   "nav.foot": "网关 · v{v}",
+  "nav.billing": "路由器密钥与充值",
 
   // topbar / status
   "status.router": "路由器",
@@ -40,6 +41,7 @@ export default {
   "status.online": "在线",
   "status.offline": "离线",
   "status.checking": "检测中…",
+  "status.noKey": "无密钥",
   "theme.toggle": "主题",
   "logout": "退出",
 
@@ -88,6 +90,7 @@ export default {
   "dash.health.title": "健康状态",
   "dash.health.reachable": "可达",
   "dash.health.unreachable": "不可达",
+  "dash.health.getKey": "获取路由器密钥",
 
   // models
   "models.title": "模型",
@@ -225,6 +228,18 @@ export default {
   "settings.router.timeout": "超时（ms）",
   "settings.router.verifyTls": "验证 TLS 证书",
   "settings.router.taxonomy": "分类体系 ID",
+  "settings.router.getKey": "获取或充值路由器密钥：",
+  "settings.router.secret": "路由器密钥（值）",
+  "settings.router.test": "测试路由器",
+  "router.probe.ok": "路由器正常（{ms} ms）",
+  "router.probe.noKey": "未设置路由器密钥",
+  "router.probe.auth": "密钥被拒绝——无效或已吊销",
+  "router.probe.payment": "需要付款——套餐到期或配额用尽",
+  "router.probe.quota": "超出速率限制",
+  "router.probe.timeout": "路由器响应超时",
+  "router.probe.unreachable": "路由器不可达",
+  "router.probe.error": "路由器错误",
+  "router.usage": "用量",
   "settings.route": "路由输入",
   "settings.route.strategy": "文本策略",
   "settings.route.maxChars": "最大字符数",

@@ -2,6 +2,7 @@
 import { h } from "../ui.js";
 import { t } from "../i18n.js";
 import { setToken } from "../api.js";
+import { SITE_URL } from "../app.js";
 
 export function renderLogin(onOk) {
   const input = h("input", {
@@ -34,7 +35,12 @@ export function renderLogin(onOk) {
       h("p", { class: "sub" }, t("login.subtitle")),
       h("label", { class: "field" }, h("span", {}, t("login.token")), input),
       h("button", { class: "btn primary", style: "width:100%", onClick: submit }, t("login.submit")),
-      h("p", { class: "hint", style: "margin-top:16px" }, t("login.hint"))
+      h("p", { class: "hint", style: "margin-top:16px" }, t("login.hint")),
+      h(
+        "p",
+        { class: "hint", style: "margin-top:8px" },
+        h("a", { href: SITE_URL, target: "_blank", rel: "noopener" }, t("nav.billing") + " · api.allaigate.com ↗")
+      )
     )
   );
 }

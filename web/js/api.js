@@ -50,6 +50,7 @@ export const api = {
   // meta / health
   meta: () => j("GET", "/meta"),
   health: () => j("GET", "/health"),
+  probeRouter: () => j("POST", "/router/probe"),
 
   // config
   getConfig: () => j("GET", "/config"),
@@ -90,6 +91,21 @@ export const api = {
 
   // playground
   test: (b) => j("POST", "/test", b),
+
+  // shadow / self-warming loop
+  shadow: () => j("GET", "/shadow"),
+
+  // CMF model factory (HuggingFace → local .cmf)
+  hfSearch: (q, limit = 24) =>
+    j("GET", `/hf/search?q=${encodeURIComponent(q || "")}&limit=${limit}`),
+  startImport: (b) => j("POST", "/import", b),
+  listImports: () => j("GET", "/import"),
+  importStatus: (job) => j("GET", "/import/" + encodeURIComponent(job)),
+  cancelImport: (job) =>
+    j("POST", "/import/" + encodeURIComponent(job) + "/cancel"),
+  deleteImport: (job) => j("DELETE", "/import/" + encodeURIComponent(job)),
+  registerImport: (job) =>
+    j("POST", "/import/" + encodeURIComponent(job) + "/register"),
 };
 
 // Streaming playground: POST /test/stream, calls onDelta(text) per content chunk,
