@@ -655,9 +655,14 @@ async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBo
         cfg.cache = v;
     }
     if let Some(v) = b.cmf {
-        // manage_server / local_model changes apply on restart (the server is
-        // spawned at startup); local_only / router routing apply immediately.
-        if v.manage_server != cfg.cmf.manage_server || v.local_model != cfg.cmf.local_model {
+        // manage_server / local_model / threads / gpu apply on restart (the server
+        // is spawned once at startup with those env vars); local_only / router
+        // routing apply immediately.
+        if v.manage_server != cfg.cmf.manage_server
+            || v.local_model != cfg.cmf.local_model
+            || v.threads != cfg.cmf.threads
+            || v.gpu != cfg.cmf.gpu
+        {
             needs_restart = true;
         }
         cfg.cmf = v;

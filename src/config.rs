@@ -116,6 +116,11 @@ pub struct CmfCfg {
     /// (measured ~2.8x faster than serial on a 15B model). Default 8.
     #[serde(default = "default_cmf_threads")]
     pub threads: usize,
+    /// Offload large matvecs to the GPU (exports CMF_GPU=1). On Apple Silicon the
+    /// decode loop is memory-bandwidth bound, so this is ~neutral for generation
+    /// (helps prefill of long prompts). Off by default.
+    #[serde(default)]
+    pub gpu: bool,
 }
 impl Default for CmfCfg {
     fn default() -> Self {
@@ -135,6 +140,7 @@ impl Default for CmfCfg {
             model_id: default_cmf_model_id(),
             local_only: false,
             threads: default_cmf_threads(),
+            gpu: false,
         }
     }
 }
