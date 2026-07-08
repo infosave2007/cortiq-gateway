@@ -167,6 +167,11 @@ fn spawn_serve(cfg: &CmfCfg) -> Result<Child, String> {
     if cfg.threads > 1 {
         cmd.env("CMF_THREADS", cfg.threads.to_string());
     }
+    // Offload large matvecs to the GPU (Metal on macOS). Memory-bandwidth-bound
+    // on unified memory, so mostly a prefill win; opt-in.
+    if cfg.gpu {
+        cmd.env("CMF_GPU", "1");
+    }
     cmd.stdout(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(true)

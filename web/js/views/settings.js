@@ -193,6 +193,8 @@ export async function renderSettings() {
   const cmfModel = h("input", { value: s.cmf?.local_model || "", placeholder: "models/model.cmf" });
   const cmfPort = h("input", { type: "number", value: s.cmf?.local_port ?? 8081 });
   const cmfModelId = h("input", { value: s.cmf?.model_id || "cmf-local" });
+  const cmfThreads = h("input", { type: "number", min: 0, value: s.cmf?.threads ?? 8 });
+  const cmfGpu = check(t("settings.cmf.gpu"), s.cmf?.gpu);
 
   const saveBtn = h("button", { class: "btn primary" }, t("common.save"));
   saveBtn.addEventListener("click", async () => {
@@ -241,6 +243,8 @@ export async function renderSettings() {
         local_model: cmfModel.value.trim(),
         local_port: parseInt(cmfPort.value) || 8081,
         model_id: cmfModelId.value.trim() || "cmf-local",
+        threads: parseInt(cmfThreads.value) || 0,
+        gpu: cmfGpu.cb.checked,
       },
     };
     // serde: drop null optionals
@@ -373,7 +377,9 @@ export async function renderSettings() {
         h("div", { class: "row" }, cmfAutoInstall.node, cmfAutoUpdate.node),
         field(t("settings.cmf.model"), cmfModel),
         h("div", { class: "row" }, field(t("settings.cmf.port"), cmfPort), field(t("settings.cmf.modelId"), cmfModelId)),
-        h("div", { class: "hint" }, t("settings.cmf.note"))
+        h("div", { class: "row" }, field(t("settings.cmf.threads"), cmfThreads), cmfGpu.node),
+        h("div", { class: "hint" }, t("settings.cmf.note")),
+        h("div", { class: "hint" }, t("settings.cmf.speedNote"))
       )
     ),
     h(
