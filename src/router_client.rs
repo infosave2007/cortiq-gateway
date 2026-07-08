@@ -4,16 +4,48 @@
 
 use crate::config::RouterCfg;
 use crate::model::RouteDecision;
+use crate::secrets::SecretStore;
+use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::Arc;
+
+/// Outcome of the most recent real `/v1/route` call, shared with the admin health
+/// endpoint so the panel can tell "no money / bad key" apart from "router down".
+/// 0 = ok (or no calls yet); [`STATUS_NETWORK`] / [`STATUS_TIMEOUT`] for transport
+/// failures; otherwise the upstream HTTP status code.
+pub type RouterLastStatus = Arc<AtomicU16>;
+
+pub const STATUS_NETWORK: u16 = 1;
+pub const STATUS_TIMEOUT: u16 = 2;
+
+/// Error kind for the admin panel.
+pub fn classify_status(code: u16) -> &'static str {
+    match code {
+        STATUS_NETWORK => "unreachable",
+        STATUS_TIMEOUT => "timeout",
+        401 | 403 => "auth",
+        402 => "payment",
+        429 => "quota",
+        _ => "error",
+    }
+}
 
 pub struct RouterClient {
     http: reqwest::Client,
     url: String,
     api_key: Option<String>,
     taxonomy_id: Option<String>,
+    last_status: RouterLastStatus,
 }
 
 impl RouterClient {
-    pub fn new(cfg: &RouterCfg) -> anyhow::Result<Self> {
+    /// The key is resolved through the secret store (admin panel value first,
+    /// then the environment variable) so a key pasted in the console works
+    /// without a restart.
+    pub fn new(
+        cfg: &RouterCfg,
+        secrets: &SecretStore,
+        last_status: RouterLastStatus,
+    ) -> anyhow::Result<Self> {
         let mut builder =
             reqwest::Client::builder().timeout(std::time::Duration::from_millis(cfg.timeout_ms));
 
@@ -27,12 +59,13 @@ impl RouterClient {
         let api_key = cfg
             .api_key_env
             .as_ref()
-            .and_then(|name| std::env::var(name).ok());
+            .and_then(|name| secrets.resolve(name));
         Ok(Self {
             http,
             url: cfg.url.trim_end_matches('/').to_string(),
             api_key,
             taxonomy_id: cfg.taxonomy_id.clone(),
+            last_status,
         })
     }
 
@@ -54,11 +87,22 @@ impl RouterClient {
 
         let resp = match req.send().await {
             Ok(r) => r,
-            Err(_) => return Ok(None), // degradation
+            Err(e) => {
+                let code = if e.is_timeout() {
+                    STATUS_TIMEOUT
+                } else {
+                    STATUS_NETWORK
+                };
+                self.last_status.store(code, Ordering::Relaxed);
+                return Ok(None); // degradation
+            }
         };
         if !resp.status().is_success() {
+            self.last_status
+                .store(resp.status().as_u16(), Ordering::Relaxed);
             return Ok(None);
         }
+        self.last_status.store(0, Ordering::Relaxed);
         let v: serde_json::Value = resp.json().await?;
         let d = &v["decision"];
         Ok(Some(RouteDecision {
