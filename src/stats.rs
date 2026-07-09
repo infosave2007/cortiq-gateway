@@ -83,9 +83,23 @@ impl Totals {
         self.cost_usd += r.cost_usd;
         self.latency_ms_sum += r.latency_ms;
     }
+    /// Accumulate another Totals into this one (for windowed aggregation).
+    fn merge(&mut self, o: &Totals) {
+        self.requests += o.requests;
+        self.ok += o.ok;
+        self.errors += o.errors;
+        self.failovers += o.failovers;
+        self.prompt_tokens += o.prompt_tokens;
+        self.completion_tokens += o.completion_tokens;
+        self.cost_usd += o.cost_usd;
+        self.latency_ms_sum += o.latency_ms_sum;
+    }
 }
 
-/// Per-minute bucket for time-series charts.
+/// Per-minute bucket. Beyond the chart fields it carries the per-group breakdown
+/// and failovers so the admin snapshot can be computed for ANY time window by
+/// summing the in-window buckets (the internal fields are not serialized into
+/// the `series` payload).
 #[derive(Clone, Debug, Default, Serialize)]
 pub struct Bucket {
     pub minute: u64, // unix seconds, rounded down to the minute
@@ -95,15 +109,25 @@ pub struct Bucket {
     pub completion_tokens: u64,
     pub cost_usd: f64,
     pub latency_ms_sum: u64,
+    #[serde(skip)]
+    pub failovers: u64,
+    #[serde(skip)]
+    pub by_model: HashMap<String, Totals>,
+    #[serde(skip)]
+    pub by_account: HashMap<String, Totals>,
+    #[serde(skip)]
+    pub by_tier: HashMap<String, Totals>,
+    #[serde(skip)]
+    pub by_label: HashMap<String, Totals>,
 }
 
 #[derive(Default)]
 struct Inner {
+    /// All-time totals + per-model (used by the Prometheus counters, which must
+    /// be monotonic — the windowed admin snapshot is derived from the buckets).
     total: Totals,
     by_model: HashMap<String, Totals>,
-    by_account: HashMap<String, Totals>,
-    by_tier: HashMap<String, Totals>,
-    by_label: HashMap<String, Totals>,
+    /// Per-minute buckets — the single source for the windowed admin snapshot.
     buckets: VecDeque<Bucket>,
     recent: VecDeque<RequestRecord>,
 }
@@ -166,29 +190,12 @@ impl Stats {
     }
 
     fn apply_aggregates(inner: &mut Inner, rec: &RequestRecord, retention_secs: u64) {
+        // all-time counters for Prometheus; the windowed snapshot is derived
+        // from the buckets below.
         inner.total.apply(rec);
         inner
             .by_model
             .entry(rec.model_id.clone())
-            .or_default()
-            .apply(rec);
-        inner
-            .by_account
-            .entry(if rec.account.is_empty() {
-                "anonymous".to_string()
-            } else {
-                rec.account.clone()
-            })
-            .or_default()
-            .apply(rec);
-        inner
-            .by_tier
-            .entry(rec.tier.clone())
-            .or_default()
-            .apply(rec);
-        inner
-            .by_label
-            .entry(rec.task_label.clone())
             .or_default()
             .apply(rec);
 
@@ -250,13 +257,31 @@ impl Stats {
             .filter(|b| b.minute >= cutoff)
             .collect();
 
-        let breakdown_src = match groupby {
-            "account" => &inner.by_account,
-            "tier" => &inner.by_tier,
-            "label" => &inner.by_label,
-            _ => &inner.by_model,
-        };
-        let mut breakdown: Vec<serde_json::Value> = breakdown_src
+        // Windowed totals + breakdown = sum of the in-window buckets, so the KPIs
+        // and the breakdown recompute whenever the range changes.
+        let mut win = Totals::default();
+        let mut group: HashMap<String, Totals> = HashMap::new();
+        for b in &series {
+            win.requests += b.requests;
+            win.errors += b.errors;
+            win.ok += b.requests.saturating_sub(b.errors);
+            win.failovers += b.failovers;
+            win.prompt_tokens += b.prompt_tokens;
+            win.completion_tokens += b.completion_tokens;
+            win.cost_usd += b.cost_usd;
+            win.latency_ms_sum += b.latency_ms_sum;
+            let src = match groupby {
+                "account" => &b.by_account,
+                "tier" => &b.by_tier,
+                "label" => &b.by_label,
+                _ => &b.by_model,
+            };
+            for (k, t) in src {
+                group.entry(k.clone()).or_default().merge(t);
+            }
+        }
+
+        let mut breakdown: Vec<serde_json::Value> = group
             .iter()
             .map(|(k, t)| {
                 serde_json::json!({
@@ -280,23 +305,35 @@ impl Stats {
 
         serde_json::json!({
             "totals": {
-                "requests": inner.total.requests,
-                "ok": inner.total.ok,
-                "errors": inner.total.errors,
-                "failovers": inner.total.failovers,
-                "prompt_tokens": inner.total.prompt_tokens,
-                "completion_tokens": inner.total.completion_tokens,
-                "total_tokens": inner.total.prompt_tokens + inner.total.completion_tokens,
-                "cost_usd": inner.total.cost_usd,
-                "avg_latency_ms": avg(inner.total.latency_ms_sum, inner.total.requests),
-                "success_rate": if inner.total.requests > 0 {
-                    inner.total.ok as f64 / inner.total.requests as f64
+                "requests": win.requests,
+                "ok": win.ok,
+                "errors": win.errors,
+                "failovers": win.failovers,
+                "prompt_tokens": win.prompt_tokens,
+                "completion_tokens": win.completion_tokens,
+                "total_tokens": win.prompt_tokens + win.completion_tokens,
+                "cost_usd": win.cost_usd,
+                "avg_latency_ms": avg(win.latency_ms_sum, win.requests),
+                "success_rate": if win.requests > 0 {
+                    win.ok as f64 / win.requests as f64
                 } else { 0.0 },
             },
             "groupby": groupby,
             "breakdown": breakdown,
             "series": series,
         })
+    }
+
+    /// Reset all in-memory stats and truncate the JSONL log — the "clear logs"
+    /// admin action.
+    pub fn clear(&self) {
+        {
+            let mut inner = self.inner.lock().unwrap();
+            *inner = Inner::default();
+        }
+        if let Some(path) = &self.file {
+            let _ = std::fs::write(path, "");
+        }
     }
 
     /// Recent requests (newest first), with pagination.
@@ -358,10 +395,25 @@ fn fill_bucket(b: &mut Bucket, r: &RequestRecord) {
     if r.outcome != "ok" {
         b.errors += 1;
     }
+    if r.failover {
+        b.failovers += 1;
+    }
     b.prompt_tokens += r.prompt_tokens as u64;
     b.completion_tokens += r.completion_tokens as u64;
     b.cost_usd += r.cost_usd;
     b.latency_ms_sum += r.latency_ms;
+    // per-group breakdown, so the snapshot can be windowed by summing buckets
+    b.by_model.entry(r.model_id.clone()).or_default().apply(r);
+    b.by_account
+        .entry(if r.account.is_empty() {
+            "anonymous".to_string()
+        } else {
+            r.account.clone()
+        })
+        .or_default()
+        .apply(r);
+    b.by_tier.entry(r.tier.clone()).or_default().apply(r);
+    b.by_label.entry(r.task_label.clone()).or_default().apply(r);
 }
 
 fn avg(sum: u64, n: u64) -> u64 {

@@ -1,5 +1,5 @@
 // Dashboard — KPIs, time-series charts, breakdown, recent requests, health.
-import { h, mount, money, num, ms, pct, timeAgo } from "../ui.js";
+import { h, mount, money, num, ms, pct, timeAgo, toast, confirmDialog } from "../ui.js";
 import { t } from "../i18n.js";
 import { api } from "../api.js";
 import { lineChart, barList } from "../charts.js";
@@ -53,10 +53,24 @@ export async function renderDashboard() {
           "div",
           { class: "flex" },
           h("div", { class: "grow" }, h("h2", {}, t("dash.title")), h("p", {}, t("dash.subtitle"))),
-          seg(RANGES, range, (r) => {
-            range = r;
-            load();
-          }, (r) => t("dash.range." + r))
+          h("div", { class: "flex", style: "gap:8px;align-items:center" },
+            seg(RANGES, range, (r) => {
+              range = r;
+              load();
+            }, (r) => t("dash.range." + r)),
+            h("button", {
+              class: "btn sm danger",
+              onClick: async () => {
+                if (!(await confirmDialog(t("dash.clearConfirm")))) return;
+                try {
+                  await api.clearStats();
+                  toast(t("dash.cleared"), "good");
+                  await load();
+                } catch (e) {
+                  toast(String(e.message || e), "bad");
+                }
+              },
+            }, t("dash.clear")))
         )
       ),
 

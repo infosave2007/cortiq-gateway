@@ -59,6 +59,9 @@ export default {
   // dashboard
   "dash.title": "Dashboard",
   "dash.subtitle": "Live traffic, cost and routing analytics for your model pool.",
+  "dash.clear": "Clear logs",
+  "dash.clearConfirm": "Clear all recorded stats and logs? This cannot be undone.",
+  "dash.cleared": "Logs cleared",
   "dash.range": "Range",
   "dash.range.1h": "1h",
   "dash.range.24h": "24h",

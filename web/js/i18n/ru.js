@@ -58,6 +58,9 @@ export default {
   // dashboard
   "dash.title": "Дашборд",
   "dash.subtitle": "Трафик в реальном времени, расходы и аналитика роутинга по пулу моделей.",
+  "dash.clear": "Очистить логи",
+  "dash.clearConfirm": "Очистить всю статистику и логи? Отменить нельзя.",
+  "dash.cleared": "Логи очищены",
   "dash.range": "Период",
   "dash.range.1h": "1ч",
   "dash.range.24h": "24ч",
