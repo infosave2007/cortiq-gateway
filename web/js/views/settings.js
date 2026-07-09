@@ -442,9 +442,11 @@ export async function renderSettings() {
         "div",
         { class: "card" },
         h("div", { class: "card-head" }, h("h3", {}, t("settings.route"))),
-        field(t("settings.route.strategy"), strategySel),
-        h("div", { class: "row" }, field(t("settings.route.maxChars"), maxChars), field(t("settings.route.cacheTtl"), cacheTtl)),
-        field(t("settings.route.profile"), profileSel)
+        field(t("settings.route.strategy"), strategySel, null, t("settings.route.strategyHelp")),
+        h("div", { class: "row" },
+          field(t("settings.route.maxChars"), maxChars, null, t("settings.route.maxCharsHelp")),
+          field(t("settings.route.cacheTtl"), cacheTtl, null, t("settings.route.cacheTtlHelp"))),
+        field(t("settings.route.profile"), profileSel, null, t("settings.route.profileHelp"))
       ),
       h(
         "div",
