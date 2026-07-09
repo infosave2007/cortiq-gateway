@@ -26,6 +26,13 @@ const PROVIDER_DEFAULTS = {
   http:       { base: "",                              keyEnv: "",                   needsKey: false, tier: "cheap",     caps: ["tools"] },
 };
 
+// Derive a clean model id from a model name (last path segment, slugified).
+// e.g. "qwen/qwen3.7-max" → "qwen3-7-max".
+function slugId(name) {
+  const base = (name || "").split("/").pop() || "";
+  return base.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 function modelForm(meta, existing) {
   const m = existing || { provider: "openai", kind: "chat", cost_tier: "mid", caps: ["tools"], price_in: 0, price_out: 0 };
   const idIn = h("input", { value: m.id || "", placeholder: "my-model", disabled: existing ? true : null });
@@ -69,6 +76,17 @@ function modelForm(meta, existing) {
   }
   providerSel.addEventListener("change", applyDefaults);
   if (!existing) applyDefaults();
+
+  // Auto-fill the id from the model name (until the user edits id by hand).
+  if (!existing) {
+    modelIn.addEventListener("input", () => {
+      if (!idIn.value || idIn._auto) {
+        idIn.value = slugId(modelIn.value);
+        idIn._auto = true;
+      }
+    });
+    idIn.addEventListener("input", () => { idIn._auto = false; });
+  }
 
   async function testKey() {
     if (!baseUrlIn.value.trim()) { mount(keyStatus, h("span", { style: "color:var(--bad)" }, t("models.form.baseUrl") + "?")); return; }
@@ -142,8 +160,11 @@ async function openModal(meta, existing, reload) {
   const { node, getValue } = modelForm(meta, existing);
   modal(existing ? t("models.form.editTitle") : t("models.form.addTitle"), node, async () => {
     const { model, secret, keyEnv } = getValue();
+    // Forgot the id? Derive it from the model name so saving never errors on a
+    // blank id.
+    if (!model.id) model.id = slugId(model.model);
     if (!model.id) {
-      toast(t("models.form.id") + "?", "bad");
+      toast(t("models.form.idOrModel"), "bad");
       return false;
     }
     if (!model.api_key_env) delete model.api_key_env; // keep serde field optional

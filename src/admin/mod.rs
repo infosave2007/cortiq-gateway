@@ -749,7 +749,21 @@ async fn probe_model(State(state): State<SharedState>, Path(id): Path<String>) -
     let latency_ms = started.elapsed().as_millis() as u64;
     match res {
         Ok(_) => ok(json!({ "ok": true, "latency_ms": latency_ms })),
-        Err(e) => ok(json!({ "ok": false, "latency_ms": latency_ms, "error": e.to_string() })),
+        Err(e) => {
+            let msg = e.to_string();
+            // Make auth failures actionable — a raw "User not found" (OpenRouter's
+            // 401) usually means the API key is wrong or the wrong type.
+            let hint = if msg.contains("401")
+                || msg.contains("Unauthorized")
+                || msg.contains("User not found")
+                || msg.contains("No auth")
+            {
+                " — check the API key (for OpenRouter use an inference key, not a provisioning/management key)"
+            } else {
+                ""
+            };
+            ok(json!({ "ok": false, "latency_ms": latency_ms, "error": format!("{msg}{hint}") }))
+        }
     }
 }
 
