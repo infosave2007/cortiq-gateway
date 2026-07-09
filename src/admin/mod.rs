@@ -694,15 +694,25 @@ async fn delete_model(State(state): State<SharedState>, Path(id): Path<String>) 
 
 async fn probe_model(State(state): State<SharedState>, Path(id): Path<String>) -> ApiResult {
     let live = state.live();
-    let mcfg = live
+    // Provider string: from the static pool, or "openai" for a managed local
+    // model (which is synthesized into the registry, not [[models]]).
+    let provider_str = live
         .cfg
         .models
         .iter()
         .find(|m| m.id == id)
-        .ok_or_else(|| ApiError::not_found(format!("model '{id}' not found")))?
-        .clone();
+        .map(|m| m.provider.clone())
+        .or_else(|| {
+            live.cfg
+                .cmf
+                .effective_servers()
+                .iter()
+                .find(|s| s.id == id)
+                .map(|_| "openai".to_string())
+        })
+        .ok_or_else(|| ApiError::not_found(format!("model '{id}' not found")))?;
 
-    if mcfg.provider == "anthropic" {
+    if provider_str == "anthropic" {
         return ok(json!({
             "ok": false,
             "error": "anthropic provider not yet implemented (planned v0.2)",
