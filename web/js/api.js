@@ -99,6 +99,7 @@ export const api = {
   cmfStatus: () => j("GET", "/cmf"),
   cmfInstall: () => j("POST", "/cmf/install"),
   cmfPortCheck: (port) => j("GET", "/cmf/port?port=" + encodeURIComponent(port)),
+  cmfFiles: () => j("GET", "/cmf/files"),
 
   // CMF model factory (HuggingFace → local .cmf)
   hfSearch: (q, limit = 24) =>

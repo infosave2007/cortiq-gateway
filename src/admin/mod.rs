@@ -178,6 +178,7 @@ pub fn api_routes(admin_token: String) -> Router<SharedState> {
         .route("/admin/api/cmf", get(cmf_status))
         .route("/admin/api/cmf/install", post(cmf_install))
         .route("/admin/api/cmf/port", get(cmf_port_check))
+        .route("/admin/api/cmf/files", get(cmf_files))
         .route("/admin/api/requests", get(get_requests))
         .route("/admin/api/test", post(run_test))
         .route("/admin/api/test/stream", post(run_test_stream))
@@ -841,6 +842,36 @@ async fn cmf_install(State(state): State<SharedState>) -> ApiResult {
     let bin = state.live().cfg.cmf.cortiq_bin.clone();
     tokio::spawn(crate::cmf_runtime::install_now(state.cmf.clone(), bin));
     ok(json!({ "started": true }))
+}
+
+/// List the `.cmf` model files available under `models_dir` so the UI can offer
+/// them as a dropdown instead of a hand-typed path. Includes tensor-dir `.cmf`.
+async fn cmf_files(State(state): State<SharedState>) -> ApiResult {
+    let dir = state.live().cfg.cmf.models_dir.clone();
+    let mut entries: Vec<(String, String, Option<u64>, bool)> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !name.ends_with(".cmf") {
+                continue;
+            }
+            let p = e.path();
+            let is_dir = p.is_dir();
+            let size = if is_dir {
+                None
+            } else {
+                std::fs::metadata(&p).ok().map(|m| m.len())
+            };
+            let path = format!("{}/{}", dir.trim_end_matches('/'), name);
+            entries.push((name, path, size, is_dir));
+        }
+    }
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    let files: Vec<Value> = entries
+        .into_iter()
+        .map(|(name, path, size, is_dir)| json!({ "name": name, "path": path, "size": size, "is_dir": is_dir }))
+        .collect();
+    ok(json!({ "dir": dir, "files": files }))
 }
 
 #[derive(Deserialize)]
