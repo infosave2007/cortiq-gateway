@@ -25,7 +25,9 @@ export function clear(node) {
 
 export function mount(node, ...children) {
   clear(node);
-  for (const c of children.flat()) if (c != null && c !== false) node.appendChild(c);
+  for (const c of children.flat())
+    if (c != null && c !== false)
+      node.appendChild(typeof c === "object" ? c : document.createTextNode(String(c)));
   return node;
 }
 

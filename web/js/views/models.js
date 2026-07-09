@@ -264,7 +264,7 @@ function row(m, meta, reload) {
               try {
                 await api.deleteModel(m.id);
                 toast(t("toast.deleted"), "good");
-                reload();
+                await reload();
               } catch (e) {
                 toast(String(e.message || e), "bad");
               }
