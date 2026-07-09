@@ -214,6 +214,9 @@ export async function renderSettings() {
     ? [{ id: s.cmf.model_id || "cmf-local", model: s.cmf.local_model, port: s.cmf.local_port ?? 8081, threads: s.cmf.threads ?? 8, gpu: !!s.cmf.gpu }]
     : [];
   const initServers = (s.cmf?.servers && s.cmf.servers.length) ? s.cmf.servers : legacyServers;
+  // available .cmf files under models_dir → offer as a dropdown, not a typed path
+  const cmfFiles = ((await api.cmfFiles().catch(() => ({ files: [] }))).files) || [];
+  const fileLabel = (f) => f.name + (f.size ? ` (${(f.size / 1073741824).toFixed(f.size >= 1073741824 ? 1 : 2)} GB)` : f.is_dir ? " (dir)" : "");
   function autoId(path) {
     const base = (path || "").split("/").pop().replace(/\.cmf$/i, "");
     return base ? "cmf-" + base.replace(/[^a-zA-Z0-9_-]/g, "-") : "";
@@ -221,14 +224,20 @@ export async function renderSettings() {
   function makeServerRow(sv) {
     sv = sv || { id: "", model: "", port: 8090, threads: 8, gpu: false };
     const idIn = h("input", { value: sv.id || "", placeholder: "cmf-id", style: "width:130px" });
-    const modelIn = h("input", { value: sv.model || "", placeholder: "models/model.cmf", style: "flex:2;min-width:150px" });
+    // pick from existing .cmf files rather than typing a path
+    const modelSel = h("select", { style: "flex:2;min-width:150px" });
+    const seen = new Set();
+    modelSel.appendChild(h("option", { value: "" }, "— " + t("settings.cmf.pick") + " —"));
+    cmfFiles.forEach((f) => { modelSel.appendChild(h("option", { value: f.path }, fileLabel(f))); seen.add(f.path); });
+    if (sv.model && !seen.has(sv.model)) modelSel.appendChild(h("option", { value: sv.model }, sv.model));
+    modelSel.value = sv.model || "";
     const portIn = h("input", { type: "number", value: sv.port ?? 8090, style: "width:82px" });
     const threadsIn = h("input", { type: "number", min: 0, value: sv.threads ?? 8, style: "width:60px", title: t("settings.cmf.threadsHelp") });
     const gpuIn = h("input", { type: "checkbox", checked: sv.gpu ? true : null, title: t("settings.cmf.gpuHelp") });
     const checkBtn = h("button", { class: "btn small", type: "button" }, t("settings.cmf.checkPort"));
     const removeBtn = h("button", { class: "btn small danger", type: "button", title: t("common.delete") }, "✕");
     const st = h("span", { class: "small" });
-    modelIn.addEventListener("input", () => { if (!idIn.value || idIn._auto) { idIn.value = autoId(modelIn.value); idIn._auto = true; } });
+    modelSel.addEventListener("change", () => { if (!idIn.value || idIn._auto) { idIn.value = autoId(modelSel.value); idIn._auto = true; } });
     idIn.addEventListener("input", () => { idIn._auto = false; });
     checkBtn.addEventListener("click", async () => {
       const p = parseInt(portIn.value, 10); if (!p) return;
@@ -245,8 +254,8 @@ export async function renderSettings() {
       checkBtn.disabled = false;
     });
     const row = h("div", { class: "flex wrap", style: "gap:6px;align-items:center;margin:6px 0" },
-      idIn, modelIn, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), removeBtn, st);
-    const entry = { node: row, read: () => ({ id: idIn.value.trim() || autoId(modelIn.value), model: modelIn.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked }) };
+      idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), removeBtn, st);
+    const entry = { node: row, read: () => ({ id: idIn.value.trim() || autoId(modelSel.value), model: modelSel.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked }) };
     removeBtn.addEventListener("click", () => { const i = serverRows.indexOf(entry); if (i >= 0) serverRows.splice(i, 1); row.remove(); });
     serverRows.push(entry);
     serversWrap.appendChild(row);
