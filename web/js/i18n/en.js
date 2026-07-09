@@ -129,6 +129,7 @@ export default {
   "models.form.secretMissing": "not set",
   "models.form.secretPlaceholder": "set or replace key (write-only)",
   "models.deleteConfirm": "Delete model \"{id}\"?",
+  "models.form.idOrModel": "Enter an id or a model name",
   "models.form.apiKey": "API Key",
   "models.form.apiKeyPlaceholder": "paste your API key",
   "models.form.apiKeyNotNeeded": "not required (local server)",
