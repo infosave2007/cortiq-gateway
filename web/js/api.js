@@ -87,6 +87,7 @@ export const api = {
 
   // stats
   stats: (range, groupby) => j("GET", `/stats?range=${range}&groupby=${groupby}`),
+  clearStats: () => j("DELETE", "/stats"),
   requests: (limit = 50, offset = 0) => j("GET", `/requests?limit=${limit}&offset=${offset}`),
 
   // playground

@@ -165,7 +165,7 @@ pub fn api_routes(admin_token: String) -> Router<SharedState> {
             "/admin/api/secrets",
             get(list_secrets).put(set_secret).delete(clear_secret),
         )
-        .route("/admin/api/stats", get(get_stats))
+        .route("/admin/api/stats", get(get_stats).delete(clear_stats))
         .route("/admin/api/shadow", get(get_shadow))
         .route("/admin/api/hf/search", get(hf_search))
         .route("/admin/api/import", get(list_imports).post(start_import))
@@ -1195,6 +1195,13 @@ async fn get_stats(State(state): State<SharedState>, Query(q): Query<StatsQuery>
     let mut snap = state.stats.snapshot(range_secs, groupby);
     snap["cache"] = state.cache.snapshot();
     ok(snap)
+}
+
+/// Clear all recorded stats/logs (in-memory aggregates, series, recent requests)
+/// and truncate the JSONL log — the dashboard "Clear logs" button.
+async fn clear_stats(State(state): State<SharedState>) -> ApiResult {
+    state.stats.clear();
+    ok(json!({ "ok": true }))
 }
 
 /// Self-warming shadow loop: per-task-type promotion state, Wilson-LB of the
