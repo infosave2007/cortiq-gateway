@@ -441,20 +441,20 @@ async fn list_models(State(state): State<SharedState>) -> ApiResult {
         })
         .collect();
 
-    // The managed local CMF server is registered in the routing registry from
-    // the [cmf] flags, not from [[models]]. Surface it here (marked managed, so
-    // the UI shows it read-only) so the real running model is visible and
-    // pinnable without needing a hand-maintained static pool entry. A fresh
-    // install with no managed model still returns an empty list.
+    // Managed local CMF servers are registered in the routing registry from the
+    // [cmf] config, not from [[models]]. Surface each here (marked managed, so
+    // the UI shows it read-only) so the real running models are visible and
+    // pinnable without a hand-maintained static pool entry. A fresh install with
+    // no managed model still returns an empty list.
     let cmf = &live.cfg.cmf;
-    if cmf.manage_server
-        && !cmf.local_model.trim().is_empty()
-        && !models.iter().any(|m| m["id"] == json!(cmf.model_id))
-    {
+    for s in cmf.effective_servers() {
+        if models.iter().any(|m| m["id"] == json!(s.id)) {
+            continue;
+        }
         models.push(json!({
-            "id": cmf.model_id,
+            "id": s.id,
             "provider": "openai",
-            "base_url": format!("http://{}:{}/v1", cmf.local_host, cmf.local_port),
+            "base_url": format!("http://{}:{}/v1", cmf.local_host, s.port),
             "model": "cortiq",
             "cost_tier": "local",
             "price_in": 0.0,
@@ -544,24 +544,46 @@ fn strip_id_from_routing(routing: &mut RoutingCfg, id: &str) {
     }
 }
 
+/// Whether any managed server or static model in `cfg` still uses `path` as its
+/// local `.cmf`. Guards against deleting a file that another model shares.
+fn cmf_path_referenced(cfg: &crate::config::Config, path: &std::path::Path) -> bool {
+    cfg.cmf
+        .effective_servers()
+        .iter()
+        .any(|s| std::path::Path::new(&s.model) == path)
+        || cfg
+            .models
+            .iter()
+            .any(|m| cmf_file_for_model(&cfg.cmf, m).as_deref() == Some(path))
+}
+
 async fn delete_model(State(state): State<SharedState>, Path(id): Path<String>) -> ApiResult {
     let mut cfg = current_cfg(&state);
 
-    // The managed local model lives in [cmf], not [[models]]. Deleting it stops
-    // the running server, clears the managed config, and removes its file.
-    if id == cfg.cmf.model_id
-        && cfg.cmf.manage_server
-        && !cfg.cmf.local_model.trim().is_empty()
-        && !cfg.models.iter().any(|x| x.id == id)
-    {
-        let file = cfg.cmf.local_model.clone();
-        cfg.cmf.local_model = String::new();
-        cfg.cmf.manage_server = false;
-        strip_id_from_routing(&mut cfg.routing, &id);
-        state.cmf.stop().await;
-        state.reload(cfg)?;
-        let file_removed = remove_cmf_path(std::path::Path::new(&file));
-        return ok(json!({ "ok": true, "file_removed": file_removed }));
+    // Managed local models live in [cmf], not [[models]]. Deleting one stops its
+    // server, removes it from the managed config, and deletes its file — unless
+    // another model still points at the same file.
+    let managed = cfg.cmf.effective_servers().into_iter().find(|s| s.id == id);
+    if let Some(server) = managed {
+        if !cfg.models.iter().any(|x| x.id == id) {
+            if cfg.cmf.servers.iter().any(|s| s.id == id) {
+                cfg.cmf.servers.retain(|s| s.id != id); // multi-model list entry
+            } else {
+                cfg.cmf.local_model = String::new(); // legacy single model
+                cfg.cmf.manage_server = false;
+            }
+            strip_id_from_routing(&mut cfg.routing, &id);
+            let path = std::path::PathBuf::from(&server.model);
+            let shared = cmf_path_referenced(&cfg, &path);
+            state.cmf.stop_one(&id).await;
+            state.reload(cfg)?;
+            let file_removed = if shared {
+                false
+            } else {
+                remove_cmf_path(&path)
+            };
+            return ok(json!({ "ok": true, "file_removed": file_removed }));
+        }
     }
 
     let victim = cfg.models.iter().find(|x| x.id == id).cloned();
@@ -574,8 +596,9 @@ async fn delete_model(State(state): State<SharedState>, Path(id): Path<String>) 
     let file = victim
         .as_ref()
         .and_then(|m| cmf_file_for_model(&cfg.cmf, m));
+    // Only remove the file if no remaining model still references it.
+    let file = file.filter(|p| !cmf_path_referenced(&cfg, p));
     state.reload(cfg)?;
-    // Physically remove the local .cmf after the config is persisted.
     let file_removed = file.map(|p| remove_cmf_path(&p)).unwrap_or(false);
     ok(json!({ "ok": true, "file_removed": file_removed }))
 }
@@ -765,6 +788,7 @@ async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBo
             || v.local_model != cfg.cmf.local_model
             || v.threads != cfg.cmf.threads
             || v.gpu != cfg.cmf.gpu
+            || v.servers != cfg.cmf.servers
         {
             needs_restart = true;
         }
@@ -782,19 +806,32 @@ async fn cmf_status(State(state): State<SharedState>) -> ApiResult {
     let cmf = state.live().cfg.cmf.clone();
     let ver = crate::cmf_runtime::installed_version(&cmf.cortiq_bin);
     let st = state.cmf.status();
+    // Each configured managed server, merged with its live runtime status.
+    let servers: Vec<Value> = cmf
+        .effective_servers()
+        .iter()
+        .map(|s| {
+            let live = st.servers.iter().find(|x| x.id == s.id);
+            json!({
+                "id": s.id,
+                "model": s.model,
+                "port": s.port,
+                "threads": s.threads,
+                "gpu": s.gpu,
+                "running": live.map(|l| l.running).unwrap_or(false),
+                "healthy": live.map(|l| l.healthy).unwrap_or(false),
+                "last_error": live.and_then(|l| l.last_error.clone()),
+            })
+        })
+        .collect();
     ok(json!({
         "installed": ver.is_some(),
         "version": ver,
-        "running": st.running,
-        "healthy": st.healthy,
-        "last_error": st.last_error,
-        "log": st.log,
-        // serving info so the card can show "serving <model> on :<port>"
+        "latest": st.latest_version,
         "manage_server": cmf.manage_server,
-        "local_model": cmf.local_model,
-        "model_id": cmf.model_id,
         "local_host": cmf.local_host,
-        "local_port": cmf.local_port,
+        "servers": servers,
+        "log": st.log,
     }))
 }
 
@@ -825,7 +862,7 @@ async fn cmf_port_check(State(state): State<SharedState>, Query(q): Query<PortQu
     };
     let st = state.cmf.status();
     let port = q.port;
-    let running_here = port == cmf.local_port && st.running;
+    let running_here = st.servers.iter().any(|s| s.port == port && s.running);
 
     // The bind+connect probe is blocking std::net; run it off the async runtime.
     let (available, detail, suggested) = tokio::task::spawn_blocking(move || {
