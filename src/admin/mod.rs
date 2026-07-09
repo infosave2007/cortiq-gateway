@@ -179,6 +179,7 @@ pub fn api_routes(admin_token: String) -> Router<SharedState> {
         .route("/admin/api/cmf/install", post(cmf_install))
         .route("/admin/api/cmf/port", get(cmf_port_check))
         .route("/admin/api/cmf/files", get(cmf_files))
+        .route("/admin/api/provider/models", post(provider_models))
         .route("/admin/api/requests", get(get_requests))
         .route("/admin/api/test", post(run_test))
         .route("/admin/api/test/stream", post(run_test_stream))
@@ -391,18 +392,105 @@ async fn router_probe(State(state): State<SharedState>) -> ApiResult {
     ok(json!({ "ok": true, "status": "ok", "latency_ms": latency_ms, "usage": usage }))
 }
 
+#[derive(Deserialize)]
+struct ProviderModelsBody {
+    provider: String,
+    base_url: String,
+    /// Key typed into the form (takes priority)…
+    #[serde(default)]
+    api_key: Option<String>,
+    /// …or the name of a stored secret to reuse if no key was typed.
+    #[serde(default)]
+    api_key_env: Option<String>,
+}
+
+/// Concise error line from a provider's JSON error body.
+fn provider_err(body: &str, status: u16) -> String {
+    if let Ok(v) = serde_json::from_str::<Value>(body) {
+        if let Some(m) = v["error"]["message"]
+            .as_str()
+            .or_else(|| v["error"].as_str())
+            .or_else(|| v["message"].as_str())
+        {
+            return format!("{status}: {m}");
+        }
+    }
+    format!("HTTP {status}")
+}
+
+/// Validate a provider API key and list its models by calling the provider's
+/// `/models` endpoint — powers the "Test key & load models" button. The key is
+/// used transiently (from the form) or resolved from a stored secret; it is not
+/// persisted here.
+async fn provider_models(
+    State(state): State<SharedState>,
+    Json(b): Json<ProviderModelsBody>,
+) -> ApiResult {
+    let base = b.base_url.trim_end_matches('/').to_string();
+    if base.is_empty() {
+        return Err(ApiError::bad("base URL is required"));
+    }
+    let key = b.api_key.filter(|k| !k.trim().is_empty()).or_else(|| {
+        b.api_key_env
+            .as_deref()
+            .and_then(|e| state.secrets.resolve(e))
+    });
+    let key = key.as_deref();
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| ApiError::bad(e.to_string()))?;
+
+    // Anthropic uses x-api-key + anthropic-version and /v1/models; every other
+    // (OpenAI-compatible) provider uses a Bearer token and /models.
+    let resp = if b.provider == "anthropic" {
+        let mut r = client
+            .get(format!("{base}/v1/models"))
+            .header("anthropic-version", "2023-06-01");
+        if let Some(k) = key {
+            r = r.header("x-api-key", k);
+        }
+        r.send().await
+    } else {
+        let mut r = client.get(format!("{base}/models"));
+        if let Some(k) = key {
+            r = r.header("authorization", format!("Bearer {k}"));
+        }
+        r.send().await
+    };
+    let resp = resp.map_err(|e| ApiError::bad(format!("request failed: {e}")))?;
+    let status = resp.status().as_u16();
+    let body = resp.text().await.unwrap_or_default();
+    if !(200..300).contains(&status) {
+        return ok(json!({ "ok": false, "status": status, "error": provider_err(&body, status) }));
+    }
+    // OpenAI + Anthropic both return { "data": [ { "id": ... } ] }.
+    let v: Value = serde_json::from_str(&body).unwrap_or(json!({}));
+    let mut models: Vec<String> = v["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    models.sort();
+    ok(json!({ "ok": true, "count": models.len(), "models": models }))
+}
+
 async fn meta() -> ApiResult {
     ok(json!({
         "version": env!("CARGO_PKG_VERSION"),
-        "providers": ["openai", "anthropic", "ollama", "http"],
-        "provider_impl": { "openai": true, "ollama": true, "http": true, "anthropic": true },
-        "cost_tiers": ["cheap", "mid", "expensive"],
+        "providers": ["openai", "anthropic", "openrouter", "lmstudio", "ollama", "http"],
+        "provider_impl": { "openai": true, "anthropic": true, "openrouter": true, "lmstudio": true, "ollama": true, "http": true },
+        "cost_tiers": ["cheap", "mid", "expensive", "local"],
         "kinds": ["chat", "embedding"],
         "profiles": ["cost-saver", "balanced", "quality-first"],
         "text_strategies": ["last_user", "last_user_plus_system", "concat_all"],
         "policy_modes": ["fixed_table", "cost_aware"],
         "tiers": ["low", "medium", "high"],
-        "caps": ["tools", "vision"],
+        "caps": ["tools", "vision", "audio", "reasoning", "json", "caching"],
         "protocols_impl": {
             "openai_chat": true, "openai_completions": true, "openai_embeddings": true,
             "openai_models": true, "anthropic_messages": true, "mcp": true, "native_passthrough": true

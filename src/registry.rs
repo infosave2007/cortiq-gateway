@@ -21,7 +21,10 @@ impl Registry {
                 .as_ref()
                 .and_then(|name| secrets.resolve(name));
             let provider: Arc<dyn Provider> = match m.provider.as_str() {
-                "openai" | "ollama" | "http" => Arc::new(OpenAiProvider::new(m, api_key)?),
+                // openrouter + lmstudio are OpenAI-compatible (Bearer + /chat/completions)
+                "openai" | "ollama" | "http" | "openrouter" | "lmstudio" => {
+                    Arc::new(OpenAiProvider::new(m, api_key)?)
+                }
                 "anthropic" => Arc::new(AnthropicProvider::new(m, api_key)?),
                 other => anyhow::bail!("unknown provider '{}' for model '{}'", other, m.id),
             };

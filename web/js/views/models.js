@@ -16,52 +16,124 @@ function keyBadge(src) {
   return h("span", { class: "badge " + (map[src] ?? "") }, src);
 }
 
+// Verified per-provider defaults (base URL, key env, whether a key is needed).
+const PROVIDER_DEFAULTS = {
+  openai:     { base: "https://api.openai.com/v1",    keyEnv: "OPENAI_API_KEY",     needsKey: true,  tier: "mid",       caps: ["tools", "vision"] },
+  anthropic:  { base: "https://api.anthropic.com",    keyEnv: "ANTHROPIC_API_KEY",  needsKey: true,  tier: "expensive", caps: ["tools", "vision"] },
+  openrouter: { base: "https://openrouter.ai/api/v1", keyEnv: "OPENROUTER_API_KEY", needsKey: true,  tier: "mid",       caps: ["tools", "vision"] },
+  lmstudio:   { base: "http://localhost:1234/v1",     keyEnv: "",                   needsKey: false, tier: "local",     caps: ["tools", "vision"] },
+  ollama:     { base: "http://localhost:11434/v1",    keyEnv: "",                   needsKey: false, tier: "local",     caps: ["tools"] },
+  http:       { base: "",                              keyEnv: "",                   needsKey: false, tier: "cheap",     caps: ["tools"] },
+};
+
 function modelForm(meta, existing) {
-  const m = existing || { provider: "openai", kind: "chat", cost_tier: "cheap", caps: [], price_in: 0, price_out: 0 };
-  const idIn = h("input", { value: m.id || "", placeholder: "local-qwen", disabled: existing ? true : null });
+  const m = existing || { provider: "openai", kind: "chat", cost_tier: "mid", caps: ["tools"], price_in: 0, price_out: 0 };
+  const idIn = h("input", { value: m.id || "", placeholder: "my-model", disabled: existing ? true : null });
   const providerSel = h("select", {}, ...(meta.providers || ["openai"]).map((p) => opt(p, p, p === m.provider)));
-  const baseUrlIn = h("input", { value: m.base_url || "", placeholder: "http://localhost:8000/v1" });
-  const modelIn = h("input", { value: m.model || "", placeholder: "qwen2.5-7b-instruct" });
+  const baseUrlIn = h("input", { value: m.base_url || "", placeholder: "https://api.openai.com/v1" });
+
+  // API key — typed directly, stored securely as a secret under a provider env name.
+  const keyIn = h("input", { type: "password", placeholder: t("models.form.apiKeyPlaceholder"), autocomplete: "new-password" });
+  const testBtn = h("button", { class: "btn small", type: "button" }, t("models.form.testKey"));
+  const keyStatus = h("span", { class: "small", style: "margin-left:8px" });
+
+  // Model — below the key (some providers list models from the key); searchable datalist.
+  const dlId = "model-opts-" + (m.id || "new");
+  const dl = h("datalist", { id: dlId });
+  if (m.model) dl.appendChild(h("option", { value: m.model }));
+  const modelIn = h("input", { value: m.model || "", placeholder: t("models.form.modelPlaceholder"), list: dlId, autocomplete: "off" });
+
   const kindSel = h("select", {}, ...(meta.kinds || ["chat"]).map((k) => opt(k, k, k === m.kind)));
   const tierSel = h("select", {}, ...(meta.cost_tiers || ["cheap"]).map((c) => opt(c, c, c === m.cost_tier)));
   const priceInIn = h("input", { type: "number", step: "0.01", value: m.price_in ?? 0 });
   const priceOutIn = h("input", { type: "number", step: "0.01", value: m.price_out ?? 0 });
-  const keyEnvIn = h("input", { value: m.api_key_env || "", placeholder: "OPENAI_API_KEY" });
-  const secretIn = h("input", { type: "password", placeholder: t("models.form.secretPlaceholder") });
   const capInputs = (meta.caps || ["tools", "vision"]).map((c) => {
     const cb = h("input", { type: "checkbox", checked: (m.caps || []).includes(c) ? true : null });
     return { c, cb };
   });
+
+  const envFor = () =>
+    (existing && existing.api_key_env) ||
+    (PROVIDER_DEFAULTS[providerSel.value] || {}).keyEnv ||
+    providerSel.value.toUpperCase().replace(/[^A-Z0-9]/g, "_") + "_API_KEY";
+
+  // Fill in a provider's verified defaults when it is selected.
+  function applyDefaults() {
+    const d = PROVIDER_DEFAULTS[providerSel.value];
+    if (!d) return;
+    baseUrlIn.value = d.base;
+    tierSel.value = d.tier;
+    capInputs.forEach(({ c, cb }) => { cb.checked = d.caps.includes(c); });
+    keyIn.placeholder = d.needsKey ? t("models.form.apiKeyPlaceholder") : t("models.form.apiKeyNotNeeded");
+    mount(keyStatus, "");
+  }
+  providerSel.addEventListener("change", applyDefaults);
+  if (!existing) applyDefaults();
+
+  async function testKey() {
+    if (!baseUrlIn.value.trim()) { mount(keyStatus, h("span", { style: "color:var(--bad)" }, t("models.form.baseUrl") + "?")); return; }
+    testBtn.disabled = true;
+    mount(keyStatus, t("models.form.testing"));
+    try {
+      const r = await api.providerModels({
+        provider: providerSel.value,
+        base_url: baseUrlIn.value.trim(),
+        api_key: keyIn.value.trim() || null,
+        api_key_env: envFor(),
+      });
+      if (r.ok) {
+        dl.replaceChildren(...(r.models || []).map((mm) => h("option", { value: mm })));
+        mount(keyStatus, h("span", { style: "color:var(--good)" }, "✓ " + t("models.form.foundModels", { n: r.count })));
+        modelIn.focus();
+      } else {
+        mount(keyStatus, h("span", { style: "color:var(--bad)" }, "✗ " + (r.error || t("common.error"))));
+      }
+    } catch (e) {
+      mount(keyStatus, h("span", { style: "color:var(--bad)" }, "✗ " + String(e.message || e)));
+    }
+    testBtn.disabled = false;
+  }
+  testBtn.addEventListener("click", testKey);
+
+  const keyHint =
+    existing && existing.key_source === "store" ? t("models.form.keyStored")
+    : existing && existing.key_source === "env" ? t("models.form.keyFromEnv")
+    : t("models.form.apiKeyHint");
 
   const node = h(
     "div",
     {},
     h("div", { class: "row" }, field(t("models.form.id"), idIn, existing ? null : t("models.form.idHint")), field(t("models.form.provider"), providerSel)),
     field(t("models.form.baseUrl"), baseUrlIn),
-    field(t("models.form.model"), modelIn),
+    field(t("models.form.apiKey"), h("div", { class: "flex wrap", style: "gap:8px;align-items:center" }, keyIn, testBtn, keyStatus), keyHint),
+    field(t("models.form.model"), modelIn, t("models.form.modelHint")),
+    dl,
     h("div", { class: "row" }, field(t("models.form.kind"), kindSel), field(t("models.form.costTier"), tierSel)),
     h("div", { class: "row" }, field(t("models.form.priceIn"), priceInIn), field(t("models.form.priceOut"), priceOutIn)),
-    field(t("models.form.caps"), h("div", { class: "flex wrap" }, ...capInputs.map(({ c, cb }) => h("label", { class: "check" }, cb, c)))),
-    field(t("models.form.apiKeyEnv"), keyEnvIn, t("models.form.apiKeyEnvHint")),
-    field(t("models.form.secret"), secretIn)
+    field(t("models.form.caps"), h("div", { class: "flex wrap" }, ...capInputs.map(({ c, cb }) => h("label", { class: "check" }, cb, c))))
   );
 
-  const getValue = () => ({
-    model: {
-      id: existing ? m.id : idIn.value.trim(),
-      provider: providerSel.value,
-      base_url: baseUrlIn.value.trim(),
-      model: modelIn.value.trim(),
-      kind: kindSel.value,
-      cost_tier: tierSel.value,
-      price_in: parseFloat(priceInIn.value) || 0,
-      price_out: parseFloat(priceOutIn.value) || 0,
-      api_key_env: keyEnvIn.value.trim() || null,
-      caps: capInputs.filter(({ cb }) => cb.checked).map(({ c }) => c),
-    },
-    secret: secretIn.value,
-    keyEnv: keyEnvIn.value.trim(),
-  });
+  const getValue = () => {
+    const typedKey = keyIn.value.trim();
+    const hasKey = !!typedKey || !!(existing && existing.api_key_env);
+    const keyEnv = envFor();
+    return {
+      model: {
+        id: existing ? m.id : idIn.value.trim(),
+        provider: providerSel.value,
+        base_url: baseUrlIn.value.trim(),
+        model: modelIn.value.trim(),
+        kind: kindSel.value,
+        cost_tier: tierSel.value,
+        price_in: parseFloat(priceInIn.value) || 0,
+        price_out: parseFloat(priceOutIn.value) || 0,
+        api_key_env: hasKey ? keyEnv : null,
+        caps: capInputs.filter(({ cb }) => cb.checked).map(({ c }) => c),
+      },
+      secret: typedKey,
+      keyEnv,
+    };
+  };
 
   return { node, getValue };
 }
@@ -74,8 +146,7 @@ async function openModal(meta, existing, reload) {
       toast(t("models.form.id") + "?", "bad");
       return false;
     }
-    // strip null api_key_env so serde keeps it optional
-    if (!model.api_key_env) delete model.api_key_env;
+    if (!model.api_key_env) delete model.api_key_env; // keep serde field optional
     try {
       if (existing) await api.updateModel(existing.id, model);
       else await api.createModel(model);
