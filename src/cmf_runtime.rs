@@ -1,51 +1,68 @@
 //! Local CMF model server lifecycle.
 //!
 //! Closes the loop with <https://github.com/infosave2007/cmf>: install the
-//! `cortiq` CLI from crates.io, keep it up to date, and run `cortiq serve` as a
-//! managed child process. The served model exposes an OpenAI-compatible API, so
-//! the registry registers it as an ordinary provider and the gateway routes to
-//! it like any other backend.
+//! `cortiq` CLI from crates.io, keep it up to date, and run one `cortiq serve`
+//! per configured local model as a managed child process. Each served model
+//! exposes an OpenAI-compatible API, so the registry registers it as an ordinary
+//! provider and the gateway routes to it like any other backend.
 
-use crate::config::CmfCfg;
+use crate::config::{CmfCfg, CmfServer};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::process::{Child, Command};
 
-/// Observable state of the managed local CMF server (surfaced to the admin API).
+/// Observable state of one managed local model server.
+#[derive(Clone, Debug, Default, serde::Serialize)]
+pub struct CmfServerStatus {
+    /// Pool id it is registered under.
+    pub id: String,
+    /// Path of the `.cmf` being served.
+    pub model: String,
+    /// Port the server binds to.
+    pub port: u16,
+    /// OpenAI base URL the local server is registered under.
+    pub base_url: String,
+    /// The child `cortiq serve` process has been spawned.
+    pub running: bool,
+    /// `/healthz` on the local server answered 200.
+    pub healthy: bool,
+    /// Last fatal error for this server, if any.
+    pub last_error: Option<String>,
+}
+
+/// Observable state of the managed local CMF layer (surfaced to the admin API).
 #[derive(Clone, Debug, Default, serde::Serialize)]
 pub struct CmfStatus {
-    /// `manage_server` is on and a `local_model` is configured.
+    /// `manage_server` is on and at least one local model is configured.
     pub enabled: bool,
     /// Version reported by `cortiq --version` (None = not installed).
     pub installed_version: Option<String>,
     /// Newest `cortiq-cli` on crates.io (populated when `auto_update` runs).
     pub latest_version: Option<String>,
-    /// The child `cortiq serve` process has been spawned.
-    pub running: bool,
-    /// `/healthz` on the local server answered 200.
-    pub healthy: bool,
-    /// OpenAI base URL the local server is registered under.
-    pub base_url: String,
-    /// Path of the `.cmf` being served.
-    pub model: String,
-    /// Last fatal error, if any.
-    pub last_error: Option<String>,
+    /// Per-model server status.
+    pub servers: Vec<CmfServerStatus>,
     /// Recent lifecycle log lines (bounded).
     pub log: Vec<String>,
 }
 
-/// Holds the managed child process and its live status.
+/// A spawned server: its pool id and the child process handle.
+struct Managed {
+    id: String,
+    child: Child,
+}
+
+/// Holds the managed child processes and their live status.
 pub struct CmfRuntime {
     status: Mutex<CmfStatus>,
-    child: Mutex<Option<Child>>,
+    children: Mutex<Vec<Managed>>,
 }
 
 impl CmfRuntime {
     pub fn new() -> Arc<Self> {
         Arc::new(Self {
             status: Mutex::new(CmfStatus::default()),
-            child: Mutex::new(None),
+            children: Mutex::new(Vec::new()),
         })
     }
 
@@ -59,32 +76,115 @@ impl CmfRuntime {
         let mut s = self.status.lock().unwrap();
         s.log.push(msg);
         let n = s.log.len();
-        if n > 50 {
-            s.log.drain(0..n - 50);
+        if n > 80 {
+            s.log.drain(0..n - 80);
         }
     }
 
+    /// A global (install/update) failure — not tied to a single server.
     fn fail(&self, msg: impl Into<String>) {
         let msg = msg.into();
         tracing::warn!(target: "cmf", "{msg}");
+        self.status.lock().unwrap().log.push(format!("✗ {msg}"));
+    }
+
+    /// Record a fatal error against a specific server (and the log).
+    fn fail_server(&self, id: &str, msg: impl Into<String>) {
+        let msg = msg.into();
+        tracing::warn!(target: "cmf", "[{id}] {msg}");
         let mut s = self.status.lock().unwrap();
-        s.last_error = Some(msg.clone());
-        s.log.push(format!("✗ {msg}"));
+        if let Some(sv) = s.servers.iter_mut().find(|x| x.id == id) {
+            sv.last_error = Some(msg.clone());
+        }
+        s.log.push(format!("✗ [{id}] {msg}"));
     }
 
-    fn set_child(&self, child: Child) {
-        *self.child.lock().unwrap() = Some(child);
-        self.status.lock().unwrap().running = true;
+    /// Seed the per-server status slots from the effective server list.
+    fn init_servers(&self, servers: &[CmfServer], host: &str) {
+        let mut s = self.status.lock().unwrap();
+        s.enabled = true;
+        s.servers = servers
+            .iter()
+            .map(|sv| CmfServerStatus {
+                id: sv.id.clone(),
+                model: sv.model.clone(),
+                port: sv.port,
+                base_url: format!("http://{host}:{}/v1", sv.port),
+                running: false,
+                healthy: false,
+                last_error: None,
+            })
+            .collect();
     }
 
-    /// Stop the managed server (used on shutdown / reconfigure).
+    fn set_running(&self, id: &str, running: bool) {
+        if let Some(sv) = self
+            .status
+            .lock()
+            .unwrap()
+            .servers
+            .iter_mut()
+            .find(|x| x.id == id)
+        {
+            sv.running = running;
+        }
+    }
+
+    fn set_healthy(&self, id: &str, healthy: bool) {
+        if let Some(sv) = self
+            .status
+            .lock()
+            .unwrap()
+            .servers
+            .iter_mut()
+            .find(|x| x.id == id)
+        {
+            sv.healthy = healthy;
+        }
+    }
+
+    fn add_child(&self, id: String, child: Child) {
+        self.children.lock().unwrap().push(Managed {
+            id: id.clone(),
+            child,
+        });
+        self.set_running(&id, true);
+    }
+
+    fn is_running(&self, id: &str) -> bool {
+        self.status
+            .lock()
+            .unwrap()
+            .servers
+            .iter()
+            .any(|s| s.id == id && s.running)
+    }
+
+    /// Stop all managed servers (used on shutdown / reconfigure).
     pub async fn stop(&self) {
-        if let Some(mut child) = self.child.lock().unwrap().take() {
-            let _ = child.start_kill();
+        let mut kids = std::mem::take(&mut *self.children.lock().unwrap());
+        for m in kids.iter_mut() {
+            let _ = m.child.start_kill();
         }
         let mut s = self.status.lock().unwrap();
-        s.running = false;
-        s.healthy = false;
+        for sv in s.servers.iter_mut() {
+            sv.running = false;
+            sv.healthy = false;
+        }
+    }
+
+    /// Stop and forget a single managed server (used when a model is deleted).
+    pub async fn stop_one(&self, id: &str) {
+        let removed = {
+            let mut kids = self.children.lock().unwrap();
+            kids.iter()
+                .position(|m| m.id == id)
+                .map(|pos| kids.remove(pos))
+        };
+        if let Some(mut m) = removed {
+            let _ = m.child.start_kill();
+        }
+        self.status.lock().unwrap().servers.retain(|sv| sv.id != id);
     }
 }
 
@@ -92,7 +192,7 @@ impl Default for CmfRuntime {
     fn default() -> Self {
         Self {
             status: Mutex::new(CmfStatus::default()),
-            child: Mutex::new(None),
+            children: Mutex::new(Vec::new()),
         }
     }
 }
@@ -175,24 +275,24 @@ pub async fn install_now(rt: Arc<CmfRuntime>, bin: String) {
     }
 }
 
-/// Spawn `cortiq serve <model> --host <host> --port <port>`; the child is killed
-/// when its handle is dropped (i.e. when the gateway shuts down).
-fn spawn_serve(cfg: &CmfCfg) -> Result<Child, String> {
+/// Spawn `cortiq serve <model> --host <host> --port <port>` for one server; the
+/// child is killed when its handle is dropped (i.e. when the gateway shuts down).
+fn spawn_serve(server: &CmfServer, cfg: &CmfCfg) -> Result<Child, String> {
     let mut cmd = Command::new(&cfg.cortiq_bin);
     cmd.arg("serve")
-        .arg(&cfg.local_model)
+        .arg(&server.model)
         .arg("--host")
         .arg(&cfg.local_host)
         .arg("--port")
-        .arg(cfg.local_port.to_string());
-    // Parallelise decode matvecs across cores (CMF_THREADS). 0 = leave the
+        .arg(server.port.to_string());
+    // Parallelise decode matvecs across cores (CMF_THREADS). 0/1 = leave the
     // runtime's own default; N>1 gave ~2.8x on a 15B CPU model.
-    if cfg.threads > 1 {
-        cmd.env("CMF_THREADS", cfg.threads.to_string());
+    if server.threads > 1 {
+        cmd.env("CMF_THREADS", server.threads.to_string());
     }
     // Offload large matvecs to the GPU (Metal on macOS). Memory-bandwidth-bound
     // on unified memory, so mostly a prefill win; opt-in.
-    if cfg.gpu {
+    if server.gpu {
         cmd.env("CMF_GPU", "1");
     }
     cmd.stdout(Stdio::null())
@@ -222,24 +322,17 @@ async fn wait_healthy(host: &str, port: u16, tries: u32) -> bool {
     false
 }
 
-/// Orchestrate the whole lifecycle: ensure installed → maybe update → spawn →
-/// wait healthy. Safe to call in a background task; it never panics.
+/// Orchestrate the whole lifecycle: ensure installed → maybe update → spawn each
+/// configured local model → wait healthy. Safe to call in a background task; it
+/// never panics.
 pub async fn manage(rt: Arc<CmfRuntime>, cfg: CmfCfg) {
-    if !cfg.manage_server || cfg.local_model.trim().is_empty() {
+    let servers = cfg.effective_servers();
+    if servers.is_empty() {
         return;
     }
-    {
-        let mut s = rt.status.lock().unwrap();
-        s.enabled = true;
-        s.base_url = format!("http://{}:{}/v1", cfg.local_host, cfg.local_port);
-        s.model = cfg.local_model.clone();
-    }
-    if !std::path::Path::new(&cfg.local_model).exists() {
-        rt.fail(format!("local_model not found: {}", cfg.local_model));
-        return;
-    }
+    rt.init_servers(&servers, &cfg.local_host);
 
-    // 1. Ensure the `cortiq` binary is available.
+    // 1. Ensure the `cortiq` binary is available (once for all servers).
     let mut ver = installed_version(&cfg.cortiq_bin);
     if ver.is_none() {
         if cfg.auto_install {
@@ -285,27 +378,38 @@ pub async fn manage(rt: Arc<CmfRuntime>, cfg: CmfCfg) {
         }
     }
 
-    // 3. Spawn the local server.
-    rt.log(format!(
-        "starting: cortiq serve {} --host {} --port {}",
-        cfg.local_model, cfg.local_host, cfg.local_port
-    ));
-    match spawn_serve(&cfg) {
-        Ok(child) => rt.set_child(child),
-        Err(e) => {
-            rt.fail(format!("failed to spawn cortiq serve: {e}"));
-            return;
+    // 3. Spawn each server (fast).
+    for server in &servers {
+        if !std::path::Path::new(&server.model).exists() {
+            rt.fail_server(
+                &server.id,
+                format!("model file not found: {}", server.model),
+            );
+            continue;
+        }
+        rt.log(format!(
+            "starting: cortiq serve {} --host {} --port {}",
+            server.model, cfg.local_host, server.port
+        ));
+        match spawn_serve(server, &cfg) {
+            Ok(child) => rt.add_child(server.id.clone(), child),
+            Err(e) => rt.fail_server(&server.id, format!("failed to spawn: {e}")),
         }
     }
 
-    // 4. Wait until it is serving (model load can take a while for big models).
-    if wait_healthy(&cfg.local_host, cfg.local_port, 240).await {
-        rt.status.lock().unwrap().healthy = true;
-        rt.log(format!(
-            "local CMF server ready — registered as model '{}' at http://{}:{}/v1",
-            cfg.model_id, cfg.local_host, cfg.local_port
-        ));
-    } else {
-        rt.fail("local CMF server did not become healthy in time");
+    // 4. Wait until each spawned server is serving (model load can be slow).
+    for server in &servers {
+        if !rt.is_running(&server.id) {
+            continue; // failed to spawn / file missing
+        }
+        if wait_healthy(&cfg.local_host, server.port, 240).await {
+            rt.set_healthy(&server.id, true);
+            rt.log(format!(
+                "local CMF server ready — '{}' at http://{}:{}/v1",
+                server.id, cfg.local_host, server.port
+            ));
+        } else {
+            rt.fail_server(&server.id, "did not become healthy in time");
+        }
     }
 }

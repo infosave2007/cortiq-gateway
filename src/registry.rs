@@ -28,17 +28,17 @@ impl Registry {
             by_id.insert(m.id.clone(), provider);
         }
 
-        // Managed local CMF server: register it as an OpenAI-compatible provider
-        // so it can be routed to like any other backend — including when the
-        // router is unavailable or the gateway is in local-only mode.
-        if cfg.cmf.manage_server
-            && !cfg.cmf.local_model.trim().is_empty()
-            && !by_id.contains_key(&cfg.cmf.model_id)
-        {
+        // Managed local CMF servers: register each as an OpenAI-compatible
+        // provider so it can be routed to like any other backend — including when
+        // the router is unavailable or the gateway is in local-only mode.
+        for s in cfg.cmf.effective_servers() {
+            if by_id.contains_key(&s.id) {
+                continue; // a static [[models]] entry with the same id wins
+            }
             let m = ModelCfg {
-                id: cfg.cmf.model_id.clone(),
+                id: s.id.clone(),
                 provider: "openai".into(),
-                base_url: format!("http://{}:{}/v1", cfg.cmf.local_host, cfg.cmf.local_port),
+                base_url: format!("http://{}:{}/v1", cfg.cmf.local_host, s.port),
                 model: "cortiq".into(),
                 cost_tier: "local".into(),
                 price_in: 0.0,

@@ -49,8 +49,8 @@ impl Live {
     /// (local-only / disabled) or unavailable, so CMF models serve with no router.
     pub fn local_candidates(&self) -> Vec<String> {
         let mut v = Vec::new();
-        if self.cfg.cmf.manage_server && !self.cfg.cmf.local_model.trim().is_empty() {
-            v.push(self.cfg.cmf.model_id.clone());
+        for s in self.cfg.cmf.effective_servers() {
+            v.push(s.id);
         }
         let def = self.routing.default_model().to_string();
         if !def.is_empty() && !v.contains(&def) {

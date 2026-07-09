@@ -67,6 +67,24 @@ pub struct Config {
     pub cmf: CmfCfg,
 }
 
+/// One managed local model: the gateway runs a dedicated `cortiq serve` for it
+/// on its own port and registers it in the pool under `id`.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CmfServer {
+    /// Pool id it is registered under (e.g. "cmf-qwen3-5-2b").
+    pub id: String,
+    /// Path to the `.cmf` to serve.
+    pub model: String,
+    /// TCP port the dedicated `cortiq serve` binds to (must be unique).
+    pub port: u16,
+    /// Worker threads (CMF_THREADS). 0 = runtime default.
+    #[serde(default = "default_cmf_threads")]
+    pub threads: usize,
+    /// Offload matvecs to the GPU (CMF_GPU=1).
+    #[serde(default)]
+    pub gpu: bool,
+}
+
 /// CMF-format model factory: import a HuggingFace model, convert it to a
 /// local `.cmf` (quantized), and serve it via cortiq-server. Points the
 /// gateway at the Python converter + runtime on the host.
@@ -129,6 +147,35 @@ pub struct CmfCfg {
     /// (helps prefill of long prompts). Off by default.
     #[serde(default)]
     pub gpu: bool,
+    /// Managed local models. When non-empty (and `manage_server` is on), the
+    /// gateway spawns and supervises one `cortiq serve` per entry — each on its
+    /// own port — and registers each in the pool. Empty = fall back to the single
+    /// legacy `local_model` / `local_port` / `model_id` below (back-compat).
+    #[serde(default)]
+    pub servers: Vec<CmfServer>,
+}
+impl CmfCfg {
+    /// The managed local models actually in effect: the `servers` list when set,
+    /// otherwise the single legacy `local_model` (as a one-element list). Empty
+    /// when `manage_server` is off or nothing is configured.
+    pub fn effective_servers(&self) -> Vec<CmfServer> {
+        if !self.manage_server {
+            return Vec::new();
+        }
+        if !self.servers.is_empty() {
+            return self.servers.clone();
+        }
+        if !self.local_model.trim().is_empty() {
+            return vec![CmfServer {
+                id: self.model_id.clone(),
+                model: self.local_model.clone(),
+                port: self.local_port,
+                threads: self.threads,
+                gpu: self.gpu,
+            }];
+        }
+        Vec::new()
+    }
 }
 impl Default for CmfCfg {
     fn default() -> Self {
@@ -149,6 +196,7 @@ impl Default for CmfCfg {
             local_only: false,
             threads: default_cmf_threads(),
             gpu: false,
+            servers: Vec::new(),
         }
     }
 }
@@ -605,7 +653,8 @@ impl Config {
         // A managed local CMF model counts as an available model even though it
         // is registered dynamically rather than via a [[models]] entry — this
         // is what lets the gateway run on local models alone (no cloud, no router).
-        let has_local = self.cmf.manage_server && !self.cmf.local_model.trim().is_empty();
+        let servers = self.cmf.effective_servers();
+        let has_local = !servers.is_empty();
         if self.models.is_empty() && !has_local {
             // Fresh install: start with an EMPTY model pool so the admin console
             // comes up — the user adds models in /admin → Models (or points [cmf]
@@ -624,8 +673,15 @@ impl Config {
         // every target in [routing] must exist in the model pool
         let mut ids: std::collections::HashSet<&str> =
             self.models.iter().map(|m| m.id.as_str()).collect();
-        if has_local {
-            ids.insert(self.cmf.model_id.as_str());
+        // managed local servers are known ids too; also enforce unique ports/ids
+        let mut ports = std::collections::HashSet::new();
+        for s in &servers {
+            if !ids.insert(s.id.as_str()) {
+                anyhow::bail!("config: duplicate managed model id '{}'", s.id);
+            }
+            if !ports.insert(s.port) {
+                anyhow::bail!("config: two managed models share port {}", s.port);
+            }
         }
         if !self.routing.default.is_empty() && !ids.contains(self.routing.default.as_str()) {
             anyhow::bail!(

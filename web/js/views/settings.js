@@ -207,11 +207,54 @@ export async function renderSettings() {
   const cmfManage = check(t("settings.cmf.manage"), s.cmf?.manage_server, t("settings.cmf.manageHelp"));
   const cmfAutoInstall = check(t("settings.cmf.autoInstall"), s.cmf?.auto_install, t("settings.cmf.autoInstallHelp"));
   const cmfAutoUpdate = check(t("settings.cmf.autoUpdate"), s.cmf?.auto_update, t("settings.cmf.autoUpdateHelp"));
-  const cmfModel = h("input", { value: s.cmf?.local_model || "", placeholder: "models/my-model.cmf" });
-  const cmfPort = h("input", { type: "number", value: s.cmf?.local_port ?? 8081 });
-  const cmfThreads = h("input", { type: "number", min: 0, value: s.cmf?.threads ?? 8 });
-  const cmfGpu = check(t("settings.cmf.gpu"), s.cmf?.gpu, t("settings.cmf.gpuHelp"));
-  const cmfModelIdVal = s.cmf?.model_id || "cmf-local"; // auto — no manual "model id" field
+  // ── managed local models: one supervised `cortiq serve` per row ──
+  const serverRows = [];
+  const serversWrap = h("div", {});
+  const legacyServers = s.cmf?.local_model
+    ? [{ id: s.cmf.model_id || "cmf-local", model: s.cmf.local_model, port: s.cmf.local_port ?? 8081, threads: s.cmf.threads ?? 8, gpu: !!s.cmf.gpu }]
+    : [];
+  const initServers = (s.cmf?.servers && s.cmf.servers.length) ? s.cmf.servers : legacyServers;
+  function autoId(path) {
+    const base = (path || "").split("/").pop().replace(/\.cmf$/i, "");
+    return base ? "cmf-" + base.replace(/[^a-zA-Z0-9_-]/g, "-") : "";
+  }
+  function makeServerRow(sv) {
+    sv = sv || { id: "", model: "", port: 8090, threads: 8, gpu: false };
+    const idIn = h("input", { value: sv.id || "", placeholder: "cmf-id", style: "width:130px" });
+    const modelIn = h("input", { value: sv.model || "", placeholder: "models/model.cmf", style: "flex:2;min-width:150px" });
+    const portIn = h("input", { type: "number", value: sv.port ?? 8090, style: "width:82px" });
+    const threadsIn = h("input", { type: "number", min: 0, value: sv.threads ?? 8, style: "width:60px", title: t("settings.cmf.threadsHelp") });
+    const gpuIn = h("input", { type: "checkbox", checked: sv.gpu ? true : null, title: t("settings.cmf.gpuHelp") });
+    const checkBtn = h("button", { class: "btn small", type: "button" }, t("settings.cmf.checkPort"));
+    const removeBtn = h("button", { class: "btn small danger", type: "button", title: t("common.delete") }, "✕");
+    const st = h("span", { class: "small" });
+    modelIn.addEventListener("input", () => { if (!idIn.value || idIn._auto) { idIn.value = autoId(modelIn.value); idIn._auto = true; } });
+    idIn.addEventListener("input", () => { idIn._auto = false; });
+    checkBtn.addEventListener("click", async () => {
+      const p = parseInt(portIn.value, 10); if (!p) return;
+      checkBtn.disabled = true; mount(st, t("status.checking"));
+      try {
+        const r = await api.cmfPortCheck(p);
+        if (r.available) mount(st, h("span", { style: "color:var(--good)" }, "✓ " + t("settings.cmf.portFree")));
+        else {
+          const kids = [h("span", { style: "color:var(--bad)" }, "✗ " + t("settings.cmf.portBusy"))];
+          if (r.suggested) { const b = h("button", { class: "btn small", type: "button" }, t("settings.cmf.useSuggested", { port: r.suggested })); b.addEventListener("click", () => { portIn.value = r.suggested; mount(st, ""); }); kids.push(b); }
+          mount(st, h("span", {}, ...kids));
+        }
+      } catch (e) { mount(st, String(e.message || e)); }
+      checkBtn.disabled = false;
+    });
+    const row = h("div", { class: "flex wrap", style: "gap:6px;align-items:center;margin:6px 0" },
+      idIn, modelIn, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), removeBtn, st);
+    const entry = { node: row, read: () => ({ id: idIn.value.trim() || autoId(modelIn.value), model: modelIn.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked }) };
+    removeBtn.addEventListener("click", () => { const i = serverRows.indexOf(entry); if (i >= 0) serverRows.splice(i, 1); row.remove(); });
+    serverRows.push(entry);
+    serversWrap.appendChild(row);
+    return entry;
+  }
+  initServers.forEach((sv) => makeServerRow(sv));
+  const addServerBtn = h("button", { class: "btn small", type: "button" }, t("settings.cmf.addServer"));
+  addServerBtn.addEventListener("click", () => makeServerRow());
   // "Install cortiq" — the CLI that RUNS the .cmf format. Must be present before
   // a local model server can start; this is step 1 for a new user.
   const cmfStatusEl = h("span", { class: "muted" }, "…");
@@ -228,14 +271,17 @@ export async function renderSettings() {
           ? h("span", {}, h("span", { class: "badge ok" }, "✓"), " cortiq " + (st.version || ""))
           : h("span", {}, h("span", { class: "badge bad" }, "×"), " " + t("settings.cmf.notInstalled"))
       );
-      // reflect the managed server state under the "run locally" toggle
-      if (st.manage_server && st.running) {
-        mount(cmfServingEl, h("span", { style: "color:var(--good)" },
-          "▶ " + t("settings.cmf.serving", { model: st.model_id || "", port: st.local_port }) + (st.healthy ? "" : " …")));
-      } else if (st.last_error) {
-        mount(cmfServingEl, h("span", { style: "color:var(--bad)" }, "✗ " + st.last_error));
-      } else {
+      // per-server serving indicators
+      const servers = st.servers || [];
+      if (!servers.length) {
         mount(cmfServingEl, "");
+      } else {
+        mount(cmfServingEl, h("div", {}, ...servers.map((sv) => {
+          if (sv.last_error) return h("div", { style: "color:var(--bad)" }, "✗ " + sv.id + ": " + sv.last_error);
+          if (sv.running) return h("div", { style: "color:var(--good)" },
+            "▶ " + t("settings.cmf.serving", { model: sv.id, port: sv.port }) + (sv.healthy ? "" : " …"));
+          return h("div", { class: "muted" }, "• " + sv.id + " :" + sv.port);
+        })));
       }
     } catch (_) {
       mount(cmfStatusEl, "—");
@@ -251,7 +297,6 @@ export async function renderSettings() {
         await new Promise((r) => setTimeout(r, 3000));
         const st = await api.cmfStatus();
         if (st.installed) { toast(t("settings.cmf.installedOk"), "good"); break; }
-        if (st.last_error) { toast(st.last_error, "bad"); break; }
       }
     } catch (e) {
       toast(String(e.message || e), "bad");
@@ -260,36 +305,6 @@ export async function renderSettings() {
     cmfInstallBtn.disabled = false;
   });
   refreshCmfStatus();
-
-  // Port availability check — let the user confirm the chosen port is free
-  // before enabling the managed server (the default 8081 often clashes).
-  const cmfPortStatus = h("span", { class: "small", style: "margin-left:8px" });
-  const cmfPortCheckBtn = h("button", { class: "btn small", type: "button" }, t("settings.cmf.checkPort"));
-  async function checkPort() {
-    const p = parseInt(cmfPort.value, 10);
-    if (!p) { mount(cmfPortStatus, ""); return; }
-    cmfPortCheckBtn.disabled = true;
-    mount(cmfPortStatus, t("status.checking"));
-    try {
-      const r = await api.cmfPortCheck(p);
-      if (r.available) {
-        mount(cmfPortStatus, h("span", { style: "color:var(--good)" }, "✓ " + t("settings.cmf.portFree")));
-      } else {
-        const kids = [h("span", { style: "color:var(--bad)" }, "✗ " + t("settings.cmf.portBusy"))];
-        if (r.suggested) {
-          const useBtn = h("button", { class: "btn small", type: "button", style: "margin-left:8px" },
-            t("settings.cmf.useSuggested", { port: r.suggested }));
-          useBtn.addEventListener("click", () => { cmfPort.value = r.suggested; checkPort(); });
-          kids.push(useBtn);
-        }
-        mount(cmfPortStatus, h("span", {}, ...kids));
-      }
-    } catch (e) {
-      mount(cmfPortStatus, String(e.message || e));
-    }
-    cmfPortCheckBtn.disabled = false;
-  }
-  cmfPortCheckBtn.addEventListener("click", checkPort);
 
   const saveBtn = h("button", { class: "btn primary" }, t("common.save"));
   saveBtn.addEventListener("click", async () => {
@@ -335,11 +350,9 @@ export async function renderSettings() {
         manage_server: cmfManage.cb.checked,
         auto_install: cmfAutoInstall.cb.checked,
         auto_update: cmfAutoUpdate.cb.checked,
-        local_model: cmfModel.value.trim(),
-        local_port: parseInt(cmfPort.value) || 8081,
-        model_id: cmfModelIdVal,
-        threads: parseInt(cmfThreads.value) || 0,
-        gpu: cmfGpu.cb.checked,
+        // the managed-models list is the source of truth; clear the legacy single
+        servers: serverRows.map((r) => r.read()).filter((sv) => sv.model && sv.id),
+        local_model: "",
       },
     };
     // serde: drop null optionals
@@ -477,24 +490,21 @@ export async function renderSettings() {
         ),
         h("div", { class: "row" }, cmfAutoInstall.node, cmfAutoUpdate.node),
         h("div", { class: "divider" }),
-        // Step 2 — add a model. Models are imported in the Models/Import tab; here
-        // you just point the local server at the .cmf file it produced.
-        h("div", { class: "field" }, h("span", {}, "2. " + t("settings.cmf.addModel"), " ", help(t("settings.cmf.addModelHelp"))),
+        // Step 2 — managed local models: one supervised cortiq serve per row, each
+        // on its own port. Add as many as you have .cmf files + free ports.
+        h("div", { class: "field" },
+          h("span", {}, "2. " + t("settings.cmf.models"), " ", help(t("settings.cmf.modelsHelp"))),
+          h("div", { class: "hint" }, t("settings.cmf.rowHint")),
           h("div", { class: "hint" }, t("settings.cmf.importNote"),
             " ", h("a", { href: "#/import" }, t("settings.cmf.importLink") + " ↗"))),
-        field(t("settings.cmf.model"), cmfModel, null, t("settings.cmf.modelHelp")),
-        h("div", { class: "divider" }),
-        // Step 3 — run it locally + performance.
-        cmfManage.node,
+        serversWrap,
+        addServerBtn,
         cmfServingEl,
-        h("div", { class: "row" },
-          field(t("settings.cmf.port"),
-            h("div", { class: "flex wrap" }, cmfPort, cmfPortCheckBtn, cmfPortStatus),
-            null, t("settings.cmf.portHelp")),
-          field(t("settings.cmf.threads"), cmfThreads, null, t("settings.cmf.threadsHelp"))),
-        cmfGpu.node,
-        cmfLocalOnly.node,
-        h("div", { class: "hint" }, t("settings.cmf.speedNote"))
+        h("div", { class: "hint" }, t("settings.cmf.speedNote")),
+        h("div", { class: "divider" }),
+        // Step 3 — how the gateway uses them.
+        cmfManage.node,
+        cmfLocalOnly.node
       )
     ),
     h(
