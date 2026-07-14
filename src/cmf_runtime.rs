@@ -238,7 +238,7 @@ fn parse_ver(s: &str) -> (u32, u32, u32) {
     )
 }
 
-fn version_lt(a: &str, b: &str) -> bool {
+pub(crate) fn version_lt(a: &str, b: &str) -> bool {
     parse_ver(a) < parse_ver(b)
 }
 
