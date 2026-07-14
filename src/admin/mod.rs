@@ -1447,24 +1447,44 @@ struct TestBody {
     temperature: Option<f32>,
     #[serde(default)]
     max_tokens: Option<u32>,
+    #[serde(default)]
+    top_p: Option<f32>,
+    /// Reasoning switch (cortiq ≥ 0.2.1): false = answer without the thinking
+    /// phase; true = force it on. Absent = model/row default.
+    #[serde(default)]
+    enable_thinking: Option<bool>,
 }
 fn default_test_model() -> String {
     "cortiq-auto".into()
+}
+
+/// GenParams for a playground request: native sampling fields + the reasoning
+/// switch proxied via passthrough (providers forward unknown fields as-is).
+fn test_gen_params(b: &TestBody) -> GenParams {
+    let mut params = GenParams {
+        temperature: b.temperature,
+        max_tokens: b.max_tokens,
+        top_p: b.top_p,
+        ..Default::default()
+    };
+    if let Some(v) = b.enable_thinking {
+        params
+            .passthrough
+            .insert("enable_thinking".into(), serde_json::Value::Bool(v));
+    }
+    params
 }
 
 async fn run_test(State(state): State<SharedState>, Json(b): Json<TestBody>) -> ApiResult {
     if b.messages.is_empty() {
         return Err(ApiError::bad("messages must not be empty"));
     }
+    let params = test_gen_params(&b);
     let req = ChatRequest {
         routing: parse_routing(&b.model),
         messages: b.messages,
         tools: vec![],
-        params: GenParams {
-            temperature: b.temperature,
-            max_tokens: b.max_tokens,
-            ..Default::default()
-        },
+        params,
         stream: false,
         meta: RequestMeta {
             account: "playground".into(),
@@ -1513,15 +1533,12 @@ async fn run_test_stream(State(state): State<SharedState>, Json(b): Json<TestBod
     if b.messages.is_empty() {
         return ApiError::bad("messages must not be empty").into_response();
     }
+    let params = test_gen_params(&b);
     let req = ChatRequest {
         routing: parse_routing(&b.model),
         messages: b.messages,
         tools: vec![],
-        params: GenParams {
-            temperature: b.temperature,
-            max_tokens: b.max_tokens,
-            ..Default::default()
-        },
+        params,
         stream: true,
         meta: RequestMeta {
             account: "playground".into(),

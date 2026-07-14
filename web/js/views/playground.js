@@ -16,6 +16,12 @@ export async function renderPlayground() {
   const promptIn = h("textarea", { placeholder: t("pg.promptPlaceholder"), rows: 5 });
   const tempIn = h("input", { type: "number", step: "0.1", value: 0.7 });
   const maxTokIn = h("input", { type: "number", value: 512 });
+  const topPIn = h("input", { type: "number", step: "0.05", min: 0, max: 1, placeholder: "0.9", title: t("pg.topPHelp") });
+  // reasoning switch: auto = model/row default; off/on override per request
+  const thinkSel = h("select", { title: t("pg.thinkHelp") },
+    h("option", { value: "" }, t("pg.think.auto")),
+    h("option", { value: "off" }, t("pg.think.off")),
+    h("option", { value: "on" }, t("pg.think.on")));
   const streamCb = h("input", { type: "checkbox", checked: true });
   const profileSel = h("select", {}, ...(meta.profiles || []).map((p) => h("option", { value: p }, p)));
   const modelSel = h("select", {}, ...ids.map((id) => h("option", { value: id }, id)));
@@ -69,6 +75,8 @@ export async function renderPlayground() {
       temperature: parseFloat(tempIn.value),
       max_tokens: parseInt(maxTokIn.value) || null,
     };
+    if (topPIn.value !== "") body.top_p = parseFloat(topPIn.value);
+    if (thinkSel.value) body.enable_thinking = thinkSel.value === "on";
     try {
       if (streamCb.checked) {
         const started = performance.now();
@@ -151,6 +159,9 @@ export async function renderPlayground() {
           h("label", { class: "field" }, h("span", {}, t("pg.mode")), modeSeg),
           modeExtra,
           h("div", { class: "row" }, h("label", { class: "field" }, h("span", {}, t("pg.temp")), tempIn), h("label", { class: "field" }, h("span", {}, t("pg.maxTokens")), maxTokIn)),
+          h("div", { class: "row" },
+            h("label", { class: "field" }, h("span", {}, "top-p"), topPIn),
+            h("label", { class: "field" }, h("span", {}, t("pg.think")), thinkSel)),
           h(
             "div",
             { class: "flex", style: "justify-content:space-between" },
