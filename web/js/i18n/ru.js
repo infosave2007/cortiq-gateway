@@ -131,6 +131,8 @@ export default {
   "models.form.secretMissing": "не задан",
   "models.form.secretPlaceholder": "задать или заменить ключ (только запись)",
   "models.deleteConfirm": "Удалить модель \"{id}\"?",
+  "models.deleteFile": "также удалить файл модели с диска",
+  "models.deletedWithFile": "Удалено (файл стёрт с диска)",
   "models.form.idOrModel": "Укажите id или имя модели",
   "models.form.apiKey": "API-ключ",
   "models.form.apiKeyPlaceholder": "вставьте API-ключ",

@@ -60,7 +60,8 @@ export const api = {
   listModels: () => j("GET", "/models"),
   createModel: (b) => j("POST", "/models", b),
   updateModel: (id, b) => j("PUT", "/models/" + encodeURIComponent(id), b),
-  deleteModel: (id) => j("DELETE", "/models/" + encodeURIComponent(id)),
+  deleteModel: (id, deleteFile = true) =>
+    j("DELETE", "/models/" + encodeURIComponent(id) + "?delete_file=" + (deleteFile ? "true" : "false")),
   probeModel: (id) => j("POST", "/models/" + encodeURIComponent(id) + "/probe"),
 
   // routing

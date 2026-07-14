@@ -606,7 +606,10 @@ fn cmf_file_for_model(
     cmf: &crate::config::CmfCfg,
     m: &crate::config::ModelCfg,
 ) -> Option<std::path::PathBuf> {
+    // Any loopback URL counts as local — managed servers may sit on any port.
     let local = m.base_url == cmf.cortiq_server_url
+        || m.base_url.contains("//127.0.0.1:")
+        || m.base_url.contains("//localhost:")
         || m.base_url
             .contains(&format!("{}:{}", cmf.local_host, cmf.local_port));
     let stem = m.model.trim();
@@ -646,12 +649,24 @@ fn cmf_path_referenced(cfg: &crate::config::Config, path: &std::path::Path) -> b
             .any(|m| cmf_file_for_model(&cfg.cmf, m).as_deref() == Some(path))
 }
 
-async fn delete_model(State(state): State<SharedState>, Path(id): Path<String>) -> ApiResult {
+#[derive(Deserialize)]
+struct DeleteModelQuery {
+    /// Also remove the local `.cmf` from disk. Defaults to true (the historical
+    /// behaviour); the UI asks the user and passes it explicitly.
+    delete_file: Option<bool>,
+}
+
+async fn delete_model(
+    State(state): State<SharedState>,
+    Path(id): Path<String>,
+    Query(q): Query<DeleteModelQuery>,
+) -> ApiResult {
     let mut cfg = current_cfg(&state);
+    let delete_file = q.delete_file.unwrap_or(true);
 
     // Managed local models live in [cmf], not [[models]]. Deleting one stops its
-    // server, removes it from the managed config, and deletes its file — unless
-    // another model still points at the same file.
+    // server, removes it from the managed config, and (when asked) deletes its
+    // file — unless another model still points at the same file.
     let managed = cfg.cmf.effective_servers().into_iter().find(|s| s.id == id);
     if let Some(server) = managed {
         if !cfg.models.iter().any(|x| x.id == id) {
@@ -666,10 +681,10 @@ async fn delete_model(State(state): State<SharedState>, Path(id): Path<String>) 
             let shared = cmf_path_referenced(&cfg, &path);
             state.cmf.stop_one(&id).await;
             state.reload(cfg)?;
-            let file_removed = if shared {
-                false
-            } else {
+            let file_removed = if delete_file && !shared {
                 remove_cmf_path(&path)
+            } else {
+                false
             };
             return ok(json!({ "ok": true, "file_removed": file_removed }));
         }
@@ -685,8 +700,8 @@ async fn delete_model(State(state): State<SharedState>, Path(id): Path<String>) 
     let file = victim
         .as_ref()
         .and_then(|m| cmf_file_for_model(&cfg.cmf, m));
-    // Only remove the file if no remaining model still references it.
-    let file = file.filter(|p| !cmf_path_referenced(&cfg, p));
+    // Only remove the file if asked to AND no remaining model still references it.
+    let file = file.filter(|p| delete_file && !cmf_path_referenced(&cfg, p));
     state.reload(cfg)?;
     let file_removed = file.map(|p| remove_cmf_path(&p)).unwrap_or(false);
     ok(json!({ "ok": true, "file_removed": file_removed }))

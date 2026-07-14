@@ -1,5 +1,5 @@
 // Models — pool table with add/edit modal, probe, and per-model secret entry.
-import { h, mount, modal, toast, confirmDialog, money } from "../ui.js";
+import { h, mount, modal, toast, money } from "../ui.js";
 import { t } from "../i18n.js";
 import { api } from "../api.js";
 import { appState } from "../app.js";
@@ -280,15 +280,31 @@ function row(m, meta, reload) {
           "button",
           {
             class: "btn sm danger",
-            onClick: async () => {
-              if (!(await confirmDialog(t("models.deleteConfirm", { id: m.id })))) return;
-              try {
-                await api.deleteModel(m.id);
-                toast(t("toast.deleted"), "good");
-                await reload();
-              } catch (e) {
-                toast(String(e.message || e), "bad");
-              }
+            onClick: () => {
+              // local models may have a .cmf on disk — let the user decide its fate
+              const isLocal = m.managed || /127\.0\.0\.1|localhost/.test(m.base_url || "");
+              const fileCb = h("input", { type: "checkbox", checked: isLocal ? true : null });
+              const body = h(
+                "div",
+                {},
+                h("p", {}, t("models.deleteConfirm", { id: m.id })),
+                isLocal
+                  ? h("label", { class: "check" }, fileCb, t("models.deleteFile"))
+                  : null
+              );
+              modal(t("common.delete") + ": " + m.id, body, async () => {
+                try {
+                  const r = await api.deleteModel(m.id, isLocal && fileCb.checked);
+                  toast(
+                    r.file_removed ? t("models.deletedWithFile") : t("toast.deleted"),
+                    "good"
+                  );
+                  await reload();
+                } catch (e) {
+                  toast(String(e.message || e), "bad");
+                  return false;
+                }
+              }, t("common.delete"));
             },
           },
           t("common.delete")
