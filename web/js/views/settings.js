@@ -240,6 +240,10 @@ export async function renderSettings() {
       ...o1Opts.map((v) => h("option", { value: v, selected: (sv.o1 || "") === v ? true : null },
         v === "" ? t("settings.cmf.o1Auto") : v)));
     if (sv.o1 && !o1Opts.includes(sv.o1)) o1In.appendChild(h("option", { value: sv.o1, selected: true }, sv.o1));
+    // per-model generation defaults (applied when the request doesn't set them)
+    const tempIn = h("input", { type: "number", step: "0.1", min: 0, max: 2, value: sv.temperature ?? "", placeholder: "T° 0.7", style: "width:74px", title: t("settings.cmf.tempHelp") });
+    const topPIn = h("input", { type: "number", step: "0.05", min: 0, max: 1, value: sv.top_p ?? "", placeholder: "top-p", style: "width:70px", title: t("settings.cmf.topPHelp") });
+    const maxTokIn = h("input", { type: "number", min: 1, value: sv.max_tokens ?? "", placeholder: "max tok", style: "width:82px", title: t("settings.cmf.maxTokHelp") });
     const checkBtn = h("button", { class: "btn small", type: "button" }, t("settings.cmf.checkPort"));
     const removeBtn = h("button", { class: "btn small danger", type: "button", title: t("common.delete") }, "✕");
     const st = h("span", { class: "small" });
@@ -264,8 +268,14 @@ export async function renderSettings() {
       checkBtn.disabled = false;
     });
     const row = h("div", { class: "flex wrap", style: "gap:6px;align-items:center;margin:6px 0" },
-      idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), o1In, removeBtn, st);
-    const entry = { node: row, read: () => ({ id: idIn.value.trim() || autoId(modelSel.value), model: modelSel.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked, o1: o1In.value }) };
+      idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), o1In, tempIn, topPIn, maxTokIn, removeBtn, st);
+    const entry = { node: row, read: () => {
+      const v = { id: idIn.value.trim() || autoId(modelSel.value), model: modelSel.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked, o1: o1In.value };
+      if (tempIn.value !== "") v.temperature = parseFloat(tempIn.value);
+      if (topPIn.value !== "") v.top_p = parseFloat(topPIn.value);
+      if (maxTokIn.value !== "") v.max_tokens = parseInt(maxTokIn.value);
+      return v;
+    } };
     removeBtn.addEventListener("click", () => { const i = serverRows.indexOf(entry); if (i >= 0) serverRows.splice(i, 1); row.remove(); });
     serverRows.push(entry);
     serversWrap.appendChild(row);

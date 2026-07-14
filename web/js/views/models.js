@@ -283,7 +283,9 @@ function row(m, meta, reload) {
             onClick: () => {
               // local models may have a .cmf on disk — let the user decide its fate
               const isLocal = m.managed || /127\.0\.0\.1|localhost/.test(m.base_url || "");
-              const fileCb = h("input", { type: "checkbox", checked: isLocal ? true : null });
+              // unchecked by default: deleting a pool entry should not silently
+              // cost the user a multi-GB re-download/conversion
+              const fileCb = h("input", { type: "checkbox" });
               const body = h(
                 "div",
                 {},

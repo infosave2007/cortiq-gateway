@@ -45,6 +45,9 @@ impl OpenAiProvider {
         if let Some(m) = req.params.max_tokens {
             body["max_tokens"] = m.into();
         }
+        if let Some(p) = req.params.top_p {
+            body["top_p"] = p.into();
+        }
         if !req.tools.is_empty() {
             body["tools"] = serde_json::Value::Array(req.tools.clone());
         }

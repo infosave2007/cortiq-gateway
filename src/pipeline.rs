@@ -301,6 +301,27 @@ impl Pipeline {
         Ok((decision, route_source, final_candidates))
     }
 
+    /// Fill in the model's default generation params (from its Local-models row)
+    /// for anything the request left unset — an explicit request value wins.
+    fn apply_gen_defaults(req: &mut ChatRequest, cfg: &crate::config::Config, model_id: &str) {
+        if let Some(s) = cfg
+            .cmf
+            .effective_servers()
+            .into_iter()
+            .find(|s| s.id == model_id)
+        {
+            if req.params.temperature.is_none() {
+                req.params.temperature = s.temperature;
+            }
+            if req.params.top_p.is_none() {
+                req.params.top_p = s.top_p;
+            }
+            if req.params.max_tokens.is_none() {
+                req.params.max_tokens = s.max_tokens;
+            }
+        }
+    }
+
     async fn run_inner(&self, req: ChatRequest, state: &SharedState) -> Result<ChatResponse> {
         let live = state.live();
         let (decision, route_source, mut final_candidates) = self.resolve(&req, &live).await?;
@@ -341,7 +362,9 @@ impl Pipeline {
                 route_source
             );
 
-            match provider.chat(req.clone()).await {
+            let mut attempt_req = req.clone();
+            Self::apply_gen_defaults(&mut attempt_req, &live.cfg, &model_id);
+            match provider.chat(attempt_req).await {
                 Ok(mut resp) => {
                     let cost =
                         provider.price(resp.usage.prompt_tokens, resp.usage.completion_tokens);
@@ -415,7 +438,9 @@ impl Pipeline {
                 model_id,
                 route_source
             );
-            match provider.chat_stream(req.clone()).await {
+            let mut attempt_req = req.clone();
+            Self::apply_gen_defaults(&mut attempt_req, &live.cfg, &model_id);
+            match provider.chat_stream(attempt_req).await {
                 Ok(stream) => {
                     let info = RouteInfo {
                         task_label: decision.task_label.clone(),

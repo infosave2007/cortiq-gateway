@@ -89,6 +89,14 @@ pub struct CmfServer {
     /// = force-enable on those layers.
     #[serde(default)]
     pub o1: String,
+    /// Default generation params for this model — applied by the gateway when
+    /// the incoming request does not set them (an explicit request value wins).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
 }
 
 /// CMF-format model factory: import a HuggingFace model, convert it to a
@@ -179,6 +187,9 @@ impl CmfCfg {
                 threads: self.threads,
                 gpu: self.gpu,
                 o1: String::new(),
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
             }];
         }
         Vec::new()
