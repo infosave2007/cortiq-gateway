@@ -412,6 +412,12 @@ export default {
   "import.adv.o1DeepN": "N deep layers",
   "import.adv.o1Layers": "Layers (comma-separated)",
   "import.adv.o1mHint": "landmark budget (default 32)",
+  "import.adv.o1mLabel": "Landmarks (--o1-m)",
+  "import.adv.o1mHelp": "How many landmark tokens summarize the whole older history when attention is approximated. More = closer to exact attention but slower and more memory; fewer = faster but rougher. 32 is the validated sweet spot — change only if you know why.",
+  "import.adv.o1windowLabel": "Exact window (--o1-window)",
+  "import.adv.o1windowHelp": "The last N tokens always get exact (non-approximated) attention. This protects quality on the text the model just wrote/read. Bigger = better local quality, more memory. Default 128.",
+  "import.adv.o1sinkLabel": "Sink keys (--o1-sink)",
+  "import.adv.o1sinkHelp": "The first N tokens of the context are kept exact forever ('attention sinks'). Models lean on these anchors — keeping them exact stabilizes long generations. Default 4; rarely needs changing.",
   "import.adv.o1windowHint": "exact-window width (default 128)",
   "import.adv.o1sinkHint": "permanent exact sink keys (default 4)",
 };

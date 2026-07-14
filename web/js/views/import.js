@@ -15,8 +15,14 @@ const QUANTS = [
   ["F32", "import.q.f32"],
 ];
 
-function field(label, control, hint) {
-  return h("label", { class: "field" }, h("span", {}, label), control,
+// A small "?" badge with a hover/focus tooltip (same style as Settings).
+function help(text) {
+  return text ? h("span", { class: "help", title: text, tabindex: "0", role: "img", "aria-label": text }, "?") : null;
+}
+function field(label, control, hint, helpText) {
+  return h("label", { class: "field" },
+    h("span", {}, label, helpText ? " " : null, help(helpText)),
+    control,
     hint ? h("div", { class: "hint" }, hint) : null);
 }
 function opt(v, label, sel) {
@@ -141,9 +147,9 @@ export function renderImport() {
       field(t("import.adv.o1DeepN"), o1DeepIn),
       field(t("import.adv.o1Layers"), o1CustomIn));
     const o1Knobs = h("div", { class: "row", style: "display:none" },
-      field("--o1-m", o1M, t("import.adv.o1mHint")),
-      field("--o1-window", o1Window, t("import.adv.o1windowHint")),
-      field("--o1-sink", o1Sink, t("import.adv.o1sinkHint")));
+      field(t("import.adv.o1mLabel"), o1M, t("import.adv.o1mHint"), t("import.adv.o1mHelp")),
+      field(t("import.adv.o1windowLabel"), o1Window, t("import.adv.o1windowHint"), t("import.adv.o1windowHelp")),
+      field(t("import.adv.o1sinkLabel"), o1Sink, t("import.adv.o1sinkHint"), t("import.adv.o1sinkHelp")));
     o1Sel.addEventListener("change", () => {
       const on = !!o1Sel.value;
       o1Knobs.style.display = on ? "" : "none";
