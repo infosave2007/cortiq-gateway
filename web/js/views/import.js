@@ -125,6 +125,32 @@ export function renderImport() {
     const meanBitsIn = h("input", { type: "number", step: "0.1", placeholder: "5.0" });
     const shardIn = h("input", { type: "number", step: "0.5", placeholder: t("import.adv.noShard") });
     const skipMtp = h("input", { type: "checkbox" });
+    // O(1) attention (cortiq ≥ 0.2.0): constant-memory streaming attention hint,
+    // weights byte-identical — the runtime applies it at load.
+    const o1Sel = h("select", {},
+      opt("", t("import.adv.o1Off")),
+      opt("all", t("import.adv.o1All")),
+      opt("deep", t("import.adv.o1Deep")),
+      opt("custom", t("import.adv.o1Custom")));
+    const o1DeepIn = h("input", { type: "number", min: "1", placeholder: "12" });
+    const o1CustomIn = h("input", { placeholder: "0,4,8" });
+    const o1M = h("input", { type: "number", min: "1", placeholder: "32" });
+    const o1Window = h("input", { type: "number", min: "0", placeholder: "128" });
+    const o1Sink = h("input", { type: "number", min: "0", placeholder: "4" });
+    const o1SpecRow = h("div", { class: "row", style: "display:none" },
+      field(t("import.adv.o1DeepN"), o1DeepIn),
+      field(t("import.adv.o1Layers"), o1CustomIn));
+    const o1Knobs = h("div", { class: "row", style: "display:none" },
+      field("--o1-m", o1M, t("import.adv.o1mHint")),
+      field("--o1-window", o1Window, t("import.adv.o1windowHint")),
+      field("--o1-sink", o1Sink, t("import.adv.o1sinkHint")));
+    o1Sel.addEventListener("change", () => {
+      const on = !!o1Sel.value;
+      o1Knobs.style.display = on ? "" : "none";
+      o1SpecRow.style.display = o1Sel.value === "deep" || o1Sel.value === "custom" ? "" : "none";
+      o1DeepIn.parentElement.style.display = o1Sel.value === "deep" ? "" : "none";
+      o1CustomIn.parentElement.style.display = o1Sel.value === "custom" ? "" : "none";
+    });
     const advBody = h(
       "div",
       { class: "adv-body", style: "display:none" },
@@ -137,6 +163,9 @@ export function renderImport() {
       h("div", { class: "row" },
         field(t("import.adv.shard"), shardIn),
         field("MTP", h("label", { class: "check" }, skipMtp, t("import.adv.skipMtp")))),
+      field(t("import.adv.o1"), o1Sel, t("import.adv.o1Hint")),
+      o1SpecRow,
+      o1Knobs,
     );
     const advToggle = h("button", { class: "btn ghost sm" }, "⚙ " + t("import.adv.title"));
     advToggle.addEventListener("click", () => {
@@ -156,6 +185,19 @@ export function renderImport() {
       if (vbitSel.value) params.vbit_shape = vbitSel.value;
       if (meanBitsIn.value) params.mean_bits = parseFloat(meanBitsIn.value);
       if (shardIn.value) params.shard_max_gb = parseFloat(shardIn.value);
+      if (o1Sel.value) {
+        // spec: all | deepN | explicit layer list
+        params.o1 =
+          o1Sel.value === "deep" ? "deep" + (parseInt(o1DeepIn.value) || 12)
+          : o1Sel.value === "custom" ? o1CustomIn.value.trim()
+          : "all";
+        if (!params.o1) delete params.o1;
+        else {
+          if (o1M.value) params.o1_m = parseInt(o1M.value);
+          if (o1Window.value) params.o1_window = parseInt(o1Window.value);
+          if (o1Sink.value) params.o1_sink = parseInt(o1Sink.value);
+        }
+      }
       goBtn.disabled = true;
       try {
         await api.startImport(params);

@@ -71,6 +71,20 @@ pub struct ImportParams {
     pub shard_max_gb: Option<f32>,
     #[serde(default)]
     pub skip_mtp: bool,
+    /// O(1) Nyström attention hint (native converter, cortiq ≥ 0.2.0):
+    /// `all` | `deepN` | `i,j,k`. Weights pass through unchanged — the runtime
+    /// reads the hint at load. Empty/None/"off" = exact attention.
+    #[serde(default)]
+    pub o1: Option<String>,
+    /// Landmark budget for the o1 hint (validated default 32).
+    #[serde(default)]
+    pub o1_m: Option<usize>,
+    /// Exact-window width for the o1 hint (validated default 128).
+    #[serde(default)]
+    pub o1_window: Option<usize>,
+    /// Permanent exact sink keys for the o1 hint (validated default 4).
+    #[serde(default)]
+    pub o1_sink: Option<usize>,
 }
 fn default_quant() -> String {
     "Q8_2F".into()
@@ -269,6 +283,34 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
             cfg.converter
         ));
     }
+    // O(1) attention hint — native-converter feature (cortiq ≥ 0.2.0). Fail fast
+    // with a clear message instead of a mid-job "unexpected argument" error.
+    let o1 =
+        p.o1.as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && *s != "off")
+            .map(str::to_string);
+    if o1.is_some() {
+        if use_python {
+            return Err(
+                "O(1) attention is supported by the native converter only — remove the \
+                 linear-core / v-bit shape / mean-bits options to use it"
+                    .into(),
+            );
+        }
+        if p.repo.to_ascii_lowercase().contains("gguf") {
+            return Err("O(1) attention is not supported for GGUF imports yet".into());
+        }
+        let ver = crate::cmf_runtime::installed_version(&cfg.cortiq_bin);
+        if let Some(v) = &ver {
+            if crate::cmf_runtime::version_lt(v, "0.2.0") {
+                return Err(format!(
+                    "O(1) attention needs cortiq ≥ 0.2.0 (installed: {v}) — update the runtime \
+                     in Settings → Local models"
+                ));
+            }
+        }
+    }
     let _ = std::fs::create_dir_all(&cfg.models_dir);
     let base = if p.name.trim().is_empty() {
         sanitize(p.repo.rsplit('/').next().unwrap_or(&p.repo))
@@ -383,6 +425,23 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
         if let Some(t) = &hf_token {
             a.push("--hf-token".into());
             a.push(t.clone());
+        }
+        // O(1) attention hint (weights unchanged; the runtime reads it at load)
+        if let Some(spec) = &o1 {
+            a.push("--o1".into());
+            a.push(spec.clone());
+            if let Some(m) = p.o1_m {
+                a.push("--o1-m".into());
+                a.push(m.to_string());
+            }
+            if let Some(w) = p.o1_window {
+                a.push("--o1-window".into());
+                a.push(w.to_string());
+            }
+            if let Some(s) = p.o1_sink {
+                a.push("--o1-sink".into());
+                a.push(s.to_string());
+            }
         }
         (
             cfg.cortiq_bin.clone(),
