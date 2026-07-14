@@ -319,6 +319,14 @@ impl Pipeline {
             if req.params.max_tokens.is_none() {
                 req.params.max_tokens = s.max_tokens;
             }
+            // reasoning switch: "off" → enable_thinking=false (cortiq ≥ 0.2.1
+            // renders the chat template with an empty <think> block); a client
+            // that sets enable_thinking itself wins.
+            if s.thinking == "off" && !req.params.passthrough.contains_key("enable_thinking") {
+                req.params
+                    .passthrough
+                    .insert("enable_thinking".into(), serde_json::Value::Bool(false));
+            }
         }
     }
 

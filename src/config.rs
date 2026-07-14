@@ -97,6 +97,12 @@ pub struct CmfServer {
     pub top_p: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Reasoning switch for thinking models (Qwen3/3.5 …): "off" injects
+    /// enable_thinking=false into requests that don't set it themselves —
+    /// the model answers directly, skipping the <think> phase. Needs
+    /// cortiq ≥ 0.2.1. Empty = model/template default.
+    #[serde(default)]
+    pub thinking: String,
 }
 
 /// CMF-format model factory: import a HuggingFace model, convert it to a
@@ -190,6 +196,7 @@ impl CmfCfg {
                 temperature: None,
                 top_p: None,
                 max_tokens: None,
+                thinking: String::new(),
             }];
         }
         Vec::new()
