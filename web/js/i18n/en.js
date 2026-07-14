@@ -267,6 +267,7 @@ export default {
   "settings.cmf.checkPort": "Check port",
   "settings.cmf.portFree": "port is free",
   "settings.cmf.portBusy": "port is in use",
+  "settings.cmf.portOwn": "in use by this gateway's current server — freed on restart, replacing is fine",
   "settings.cmf.useSuggested": "use {port}",
   "settings.cmf.serving": "serving {model} on :{port}",
   "settings.cmf.intro": "Run models locally with the cortiq engine — works even offline or when the router is down.",

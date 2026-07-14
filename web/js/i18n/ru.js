@@ -266,6 +266,7 @@ export default {
   "settings.cmf.checkPort": "Проверить порт",
   "settings.cmf.portFree": "порт свободен",
   "settings.cmf.portBusy": "порт занят",
+  "settings.cmf.portOwn": "занят текущим сервером шлюза — освободится после перезапуска, замена допустима",
   "settings.cmf.useSuggested": "занять {port}",
   "settings.cmf.serving": "работает: {model} на :{port}",
   "settings.cmf.intro": "Запускайте модели локально движком cortiq — работает даже офлайн или когда роутер недоступен.",

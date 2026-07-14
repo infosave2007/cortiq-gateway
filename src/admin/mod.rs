@@ -905,10 +905,73 @@ async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBo
         {
             needs_restart = true;
         }
+        let old_servers = cfg.cmf.effective_servers();
         cfg.cmf = v;
+        // Replacing or renaming a managed model must not brick the save: routing
+        // may still reference the old id. Map a vanished id to its replacement
+        // (the new server on the same port), strip ids that are truly gone, and
+        // repair the default so validate() passes.
+        heal_routing_after_cmf_change(&mut cfg, &old_servers);
     }
     state.reload(cfg)?;
     ok(json!({ "ok": true, "needs_restart": needs_restart }))
+}
+
+/// After the managed-servers list changed, rewrite [routing] so it only
+/// references ids that still exist. A removed server whose port is now held by
+/// a NEW server is treated as a replacement (old id → new id); other vanished
+/// ids are stripped. An emptied default falls back to the first managed server,
+/// then the first pool model.
+fn heal_routing_after_cmf_change(cfg: &mut Config, old_servers: &[crate::config::CmfServer]) {
+    let servers = cfg.cmf.effective_servers();
+    let known: std::collections::HashSet<String> = cfg
+        .models
+        .iter()
+        .map(|m| m.id.clone())
+        .chain(servers.iter().map(|s| s.id.clone()))
+        .collect();
+    let new_by_port: HashMap<u16, String> =
+        servers.iter().map(|s| (s.port, s.id.clone())).collect();
+    let mut rename: HashMap<String, String> = HashMap::new();
+    for old in old_servers {
+        if !known.contains(&old.id) {
+            if let Some(new_id) = new_by_port.get(&old.port) {
+                rename.insert(old.id.clone(), new_id.clone());
+            }
+        }
+    }
+    let fix = |id: &str| -> Option<String> {
+        if known.contains(id) {
+            Some(id.to_string())
+        } else {
+            rename.get(id).cloned()
+        }
+    };
+    if !cfg.routing.default.is_empty() {
+        cfg.routing.default = fix(&cfg.routing.default).unwrap_or_default();
+    }
+    if cfg.routing.default.is_empty() {
+        cfg.routing.default = servers
+            .first()
+            .map(|s| s.id.clone())
+            .or_else(|| cfg.models.first().map(|m| m.id.clone()))
+            .unwrap_or_default();
+    }
+    for tt in cfg.routing.tiers.values_mut() {
+        let list = match tt {
+            TierTargets::List(v) => v.clone(),
+            TierTargets::One(s) => vec![s.clone()],
+        };
+        let mut healed: Vec<String> = Vec::new();
+        for id in &list {
+            if let Some(new_id) = fix(id) {
+                if !healed.contains(&new_id) {
+                    healed.push(new_id);
+                }
+            }
+        }
+        *tt = TierTargets::List(healed);
+    }
 }
 
 // ───────────────────────────── cmf runtime ─────────────────────────────────
@@ -1028,6 +1091,9 @@ async fn cmf_port_check(State(state): State<SharedState>, Query(q): Query<PortQu
     ok(json!({
         "port": port,
         "available": available,
+        // true = held by this gateway's own managed server (a replaced/edited
+        // row frees it on restart) — the UI shows this as info, not an error
+        "managed": running_here,
         "detail": detail,
         "suggested": suggested,
     }))

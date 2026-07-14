@@ -245,7 +245,11 @@ export async function renderSettings() {
       try {
         const r = await api.cmfPortCheck(p);
         if (r.available) mount(st, h("span", { style: "color:var(--good)" }, "✓ " + t("settings.cmf.portFree")));
-        else {
+        else if (r.managed) {
+          // held by this gateway's own managed server — replacing the model on
+          // this port is fine, it frees up on restart
+          mount(st, h("span", { style: "color:var(--accent)" }, "ℹ " + t("settings.cmf.portOwn")));
+        } else {
           const kids = [h("span", { style: "color:var(--bad)" }, "✗ " + t("settings.cmf.portBusy"))];
           if (r.suggested) { const b = h("button", { class: "btn small", type: "button" }, t("settings.cmf.useSuggested", { port: r.suggested })); b.addEventListener("click", () => { portIn.value = r.suggested; mount(st, ""); }); kids.push(b); }
           mount(st, h("span", {}, ...kids));
