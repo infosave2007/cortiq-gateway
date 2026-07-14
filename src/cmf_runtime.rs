@@ -295,6 +295,11 @@ fn spawn_serve(server: &CmfServer, cfg: &CmfCfg) -> Result<Child, String> {
     if server.gpu {
         cmd.env("CMF_GPU", "1");
     }
+    // Serve-time O(1) attention override: "off" forces exact attention (undoes a
+    // too-aggressive --o1 conversion hint without re-converting the file).
+    if !server.o1.trim().is_empty() {
+        cmd.env("CMF_O1", server.o1.trim());
+    }
     cmd.stdout(Stdio::null())
         .stderr(Stdio::null())
         .kill_on_drop(true)

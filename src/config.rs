@@ -83,6 +83,12 @@ pub struct CmfServer {
     /// Offload matvecs to the GPU (CMF_GPU=1).
     #[serde(default)]
     pub gpu: bool,
+    /// Serve-time O(1) attention override (exported as CMF_O1). Empty = follow
+    /// the hint recorded in the .cmf; "off" = force exact attention (fixes a
+    /// too-aggressive conversion without re-converting); "all"/"deepN"/"i,j,k"
+    /// = force-enable on those layers.
+    #[serde(default)]
+    pub o1: String,
 }
 
 /// CMF-format model factory: import a HuggingFace model, convert it to a
@@ -172,6 +178,7 @@ impl CmfCfg {
                 port: self.local_port,
                 threads: self.threads,
                 gpu: self.gpu,
+                o1: String::new(),
             }];
         }
         Vec::new()

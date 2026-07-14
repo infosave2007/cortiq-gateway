@@ -1009,6 +1009,7 @@ async fn cmf_status(State(state): State<SharedState>) -> ApiResult {
                 "port": s.port,
                 "threads": s.threads,
                 "gpu": s.gpu,
+                "o1": s.o1,
                 "running": live.map(|l| l.running).unwrap_or(false),
                 "healthy": live.map(|l| l.healthy).unwrap_or(false),
                 "last_error": live.and_then(|l| l.last_error.clone()),

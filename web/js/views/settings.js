@@ -234,6 +234,12 @@ export async function renderSettings() {
     const portIn = h("input", { type: "number", value: sv.port ?? 8090, style: "width:82px" });
     const threadsIn = h("input", { type: "number", min: 0, value: sv.threads ?? 8, style: "width:60px", title: t("settings.cmf.threadsHelp") });
     const gpuIn = h("input", { type: "checkbox", checked: sv.gpu ? true : null, title: t("settings.cmf.gpuHelp") });
+    // serve-time O(1) override: off cures a too-aggressive --o1 conversion
+    const o1Opts = ["", "off", "all", "deep4", "deep8", "deep12"];
+    const o1In = h("select", { style: "width:110px", title: t("settings.cmf.o1Help") },
+      ...o1Opts.map((v) => h("option", { value: v, selected: (sv.o1 || "") === v ? true : null },
+        v === "" ? t("settings.cmf.o1Auto") : v)));
+    if (sv.o1 && !o1Opts.includes(sv.o1)) o1In.appendChild(h("option", { value: sv.o1, selected: true }, sv.o1));
     const checkBtn = h("button", { class: "btn small", type: "button" }, t("settings.cmf.checkPort"));
     const removeBtn = h("button", { class: "btn small danger", type: "button", title: t("common.delete") }, "✕");
     const st = h("span", { class: "small" });
@@ -258,8 +264,8 @@ export async function renderSettings() {
       checkBtn.disabled = false;
     });
     const row = h("div", { class: "flex wrap", style: "gap:6px;align-items:center;margin:6px 0" },
-      idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), removeBtn, st);
-    const entry = { node: row, read: () => ({ id: idIn.value.trim() || autoId(modelSel.value), model: modelSel.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked }) };
+      idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), o1In, removeBtn, st);
+    const entry = { node: row, read: () => ({ id: idIn.value.trim() || autoId(modelSel.value), model: modelSel.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked, o1: o1In.value }) };
     removeBtn.addEventListener("click", () => { const i = serverRows.indexOf(entry); if (i >= 0) serverRows.splice(i, 1); row.remove(); });
     serverRows.push(entry);
     serversWrap.appendChild(row);
