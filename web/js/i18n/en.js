@@ -264,7 +264,7 @@ export default {
   "settings.cmf.pick": "select a model",
   "settings.cmf.models": "Local models",
   "settings.cmf.modelsHelp": "Each row is one model the gateway runs (its own cortiq serve on its own port) and registers in the pool. Add as many as you have .cmf files and free ports.",
-  "settings.cmf.rowHint": "id · .cmf file · port · threads · GPU · O(1). Changes apply on restart; deleting a row stops that server.",
+  "settings.cmf.rowHint": "id · .cmf file · port · threads · GPU · O(1). Applied on save: a removed row stops its server (memory freed), a new row starts one.",
   "settings.cmf.o1Auto": "O(1): auto",
   "settings.cmf.o1Help": "O(1) attention at serve time: auto — follow the hint recorded in the .cmf; off — force exact attention (fixes incoherent output after a too-aggressive --o1 conversion, no re-convert needed); all/deepN — force-enable on those layers.",
   "settings.cmf.addServer": "+ Add local model",

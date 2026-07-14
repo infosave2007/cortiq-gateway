@@ -682,9 +682,19 @@ impl Config {
             self.models.iter().map(|m| m.id.as_str()).collect();
         // managed local servers are known ids too; also enforce unique ports/ids
         let mut ports = std::collections::HashSet::new();
+        let mut managed_seen = std::collections::HashSet::new();
         for s in &servers {
+            if !managed_seen.insert(s.id.as_str()) {
+                anyhow::bail!(
+                    "config: two managed local models share the id '{}' — give one of the rows a different id",
+                    s.id
+                );
+            }
             if !ids.insert(s.id.as_str()) {
-                anyhow::bail!("config: duplicate managed model id '{}'", s.id);
+                anyhow::bail!(
+                    "config: managed local model '{}' has the same id as a pool model — rename the row or delete the pool entry",
+                    s.id
+                );
             }
             if !ports.insert(s.port) {
                 anyhow::bail!("config: two managed models share port {}", s.port);

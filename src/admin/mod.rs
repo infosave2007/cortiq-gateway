@@ -908,28 +908,44 @@ async fn put_settings(State(state): State<SharedState>, Json(b): Json<SettingsBo
         needs_restart = true;
         cfg.cache = v;
     }
+    let mut cmf_apply: Option<(Vec<crate::config::CmfServer>, CmfCfg)> = None;
     if let Some(v) = b.cmf {
-        // manage_server / local_model / threads / gpu apply on restart (the server
-        // is spawned once at startup with those env vars); local_only / router
-        // routing apply immediately.
-        if v.manage_server != cfg.cmf.manage_server
-            || v.local_model != cfg.cmf.local_model
-            || v.threads != cfg.cmf.threads
-            || v.gpu != cfg.cmf.gpu
-            || v.servers != cfg.cmf.servers
-        {
-            needs_restart = true;
-        }
         let old_servers = cfg.cmf.effective_servers();
         cfg.cmf = v;
+        // A managed row supersedes a same-id STATIC pool entry that points at a
+        // local server (the shape Import→register creates): drop the static one
+        // instead of failing validation with "duplicate managed model id".
+        let managed_ids: std::collections::HashSet<String> = cfg
+            .cmf
+            .effective_servers()
+            .into_iter()
+            .map(|s| s.id)
+            .collect();
+        cfg.models.retain(|m| {
+            !(managed_ids.contains(&m.id)
+                && (m.base_url.contains("//127.0.0.1:") || m.base_url.contains("//localhost:")))
+        });
         // Replacing or renaming a managed model must not brick the save: routing
         // may still reference the old id. Map a vanished id to its replacement
         // (the new server on the same port), strip ids that are truly gone, and
         // repair the default so validate() passes.
         heal_routing_after_cmf_change(&mut cfg, &old_servers);
+        // Server-list changes apply LIVE after a successful reload: removed /
+        // redefined servers are stopped (RAM freed), new ones are spawned.
+        if cfg.cmf.effective_servers() != old_servers {
+            cmf_apply = Some((old_servers, cfg.cmf.clone()));
+        }
     }
     state.reload(cfg)?;
-    ok(json!({ "ok": true, "needs_restart": needs_restart }))
+    let applied_live = cmf_apply.is_some();
+    if let Some((old, new_cfg)) = cmf_apply {
+        tokio::spawn(crate::cmf_runtime::apply_server_changes(
+            state.cmf.clone(),
+            old,
+            new_cfg,
+        ));
+    }
+    ok(json!({ "ok": true, "needs_restart": needs_restart, "applied_live": applied_live }))
 }
 
 /// After the managed-servers list changed, rewrite [routing] so it only

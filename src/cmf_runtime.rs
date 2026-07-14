@@ -173,6 +173,31 @@ impl CmfRuntime {
         }
     }
 
+    /// Ensure a status slot exists for `server` (used when servers are added at
+    /// runtime); refreshes model/port if the slot already exists.
+    fn add_server_slot(&self, server: &CmfServer, host: &str) {
+        let mut s = self.status.lock().unwrap();
+        s.enabled = true;
+        if let Some(sv) = s.servers.iter_mut().find(|x| x.id == server.id) {
+            sv.model = server.model.clone();
+            sv.port = server.port;
+            sv.base_url = format!("http://{host}:{}/v1", server.port);
+            sv.running = false;
+            sv.healthy = false;
+            sv.last_error = None;
+        } else {
+            s.servers.push(CmfServerStatus {
+                id: server.id.clone(),
+                model: server.model.clone(),
+                port: server.port,
+                base_url: format!("http://{host}:{}/v1", server.port),
+                running: false,
+                healthy: false,
+                last_error: None,
+            });
+        }
+    }
+
     /// Stop and forget a single managed server (used when a model is deleted).
     pub async fn stop_one(&self, id: &str) {
         let removed = {
@@ -325,6 +350,62 @@ async fn wait_healthy(host: &str, port: u16, tries: u32) -> bool {
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     false
+}
+
+/// Apply a changed managed-servers list LIVE (no gateway restart): stop servers
+/// that were removed or redefined — freeing their memory immediately — and
+/// spawn servers that are new or redefined.
+pub async fn apply_server_changes(rt: Arc<CmfRuntime>, old: Vec<CmfServer>, cfg: CmfCfg) {
+    let new = cfg.effective_servers();
+    // 1. Stop what's gone or changed (kills the child → RAM released).
+    for o in &old {
+        let unchanged = new.iter().any(|n| n == o);
+        if !unchanged {
+            rt.stop_one(&o.id).await;
+            rt.log(format!("stopped '{}' (removed or changed)", o.id));
+        }
+    }
+    if new.is_empty() {
+        return;
+    }
+    // 2. Spawn what's new or changed.
+    if installed_version(&cfg.cortiq_bin).is_none() {
+        rt.fail("cortiq binary not found — cannot start local model servers");
+        return;
+    }
+    for n in &new {
+        let unchanged = old.iter().any(|o| o == n);
+        if unchanged {
+            continue; // already running with the same definition
+        }
+        rt.add_server_slot(n, &cfg.local_host);
+        if !std::path::Path::new(&n.model).exists() {
+            rt.fail_server(&n.id, format!("model file not found: {}", n.model));
+            continue;
+        }
+        rt.log(format!(
+            "starting: cortiq serve {} --host {} --port {}",
+            n.model, cfg.local_host, n.port
+        ));
+        match spawn_serve(n, &cfg) {
+            Ok(child) => rt.add_child(n.id.clone(), child),
+            Err(e) => {
+                rt.fail_server(&n.id, format!("failed to spawn: {e}"));
+                continue;
+            }
+        }
+        let (rtc, host, id, port) = (rt.clone(), cfg.local_host.clone(), n.id.clone(), n.port);
+        tokio::spawn(async move {
+            if wait_healthy(&host, port, 240).await {
+                rtc.set_healthy(&id, true);
+                rtc.log(format!(
+                    "local CMF server ready — '{id}' at http://{host}:{port}/v1"
+                ));
+            } else {
+                rtc.fail_server(&id, "did not become healthy in time");
+            }
+        });
+    }
 }
 
 /// Orchestrate the whole lifecycle: ensure installed → maybe update → spawn each
