@@ -273,6 +273,161 @@ fn map_quant(q: &str) -> &'static str {
     }
 }
 
+fn is_cmf_repo(repo: &str) -> bool {
+    let lower = repo.to_ascii_lowercase();
+    lower.contains("cmf") || lower.ends_with(".cmf")
+}
+
+async fn download_cmf_repo(
+    repo: String,
+    output_abs: String,
+    hf_token: Option<String>,
+    store: Arc<JobStore>,
+    id: String,
+    cancel: Arc<Notify>,
+) {
+    store.push_line(&id, format!("→ downloading ready .cmf model from {}", repo));
+    store.set_progress(&id, 0.0, "listing files".into());
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            store.push_line(&id, format!("✗ failed to build HTTP client: {e}"));
+            store.finish(&id, false);
+            store.drop_cancel(&id);
+            return;
+        }
+    };
+
+    let tree_url = format!("https://huggingface.co/api/models/{repo}/tree/main?recursive=true");
+    let mut req = client.get(&tree_url).header("User-Agent", "cortiq-gateway");
+    if let Some(t) = &hf_token {
+        req = req.bearer_auth(t);
+    }
+
+    let mut cmf_rel_path = None;
+    if let Ok(resp) = req.send().await {
+        if resp.status().is_success() {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(arr) = json.as_array() {
+                    for item in arr {
+                        if let Some(path) = item.get("path").and_then(|p| p.as_str()) {
+                            if path.to_ascii_lowercase().ends_with(".cmf") {
+                                cmf_rel_path = Some(path.to_string());
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let cmf_path = match cmf_rel_path {
+        Some(p) => p,
+        None => {
+            let repo_name = repo.split('/').last().unwrap_or(&repo);
+            format!("{repo_name}.cmf")
+        }
+    };
+
+    store.push_line(&id, format!("→ downloading {cmf_path} from HuggingFace..."));
+    store.set_progress(&id, 0.05, "downloading".into());
+
+    let download_url = format!("https://huggingface.co/{repo}/resolve/main/{cmf_path}");
+    let mut req = client
+        .get(&download_url)
+        .header("User-Agent", "cortiq-gateway");
+    if let Some(t) = &hf_token {
+        req = req.bearer_auth(t);
+    }
+
+    let mut resp = match req.send().await {
+        Ok(r) if r.status().is_success() => r,
+        Ok(r) => {
+            store.push_line(&id, format!("✗ HF download error: HTTP {}", r.status()));
+            store.finish(&id, false);
+            store.drop_cancel(&id);
+            return;
+        }
+        Err(e) => {
+            store.push_line(&id, format!("✗ network error: {e}"));
+            store.finish(&id, false);
+            store.drop_cancel(&id);
+            return;
+        }
+    };
+
+    let total_bytes = resp.content_length();
+    let mut file = match tokio::fs::File::create(&output_abs).await {
+        Ok(f) => f,
+        Err(e) => {
+            store.push_line(&id, format!("✗ failed to create file {output_abs}: {e}"));
+            store.finish(&id, false);
+            store.drop_cancel(&id);
+            return;
+        }
+    };
+
+    use tokio::io::AsyncWriteExt;
+    let mut downloaded: u64 = 0;
+
+    loop {
+        tokio::select! {
+            _ = cancel.notified() => {
+                let _ = tokio::fs::remove_file(&output_abs).await;
+                store.push_line(&id, "✗ cancelled by user — partial output removed".into());
+                store.set_state(&id, "cancelled");
+                store.drop_cancel(&id);
+                return;
+            }
+            chunk_opt = resp.chunk() => {
+                match chunk_opt {
+                    Ok(Some(chunk)) => {
+                        if let Err(e) = file.write_all(&chunk).await {
+                            store.push_line(&id, format!("✗ write error: {e}"));
+                            cleanup_output(&output_abs);
+                            store.finish(&id, false);
+                            store.drop_cancel(&id);
+                            return;
+                        }
+                        downloaded += chunk.len() as u64;
+                        if let Some(total) = total_bytes {
+                            if total > 0 {
+                                let frac = (downloaded as f32 / total as f32).clamp(0.0, 1.0);
+                                store.set_progress(&id, frac, "downloading".into());
+                            }
+                        }
+                    }
+                    Ok(None) => break,
+                    Err(e) => {
+                        store.push_line(&id, format!("✗ download stream error: {e}"));
+                        cleanup_output(&output_abs);
+                        store.finish(&id, false);
+                        store.drop_cancel(&id);
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    if let Err(e) = file.flush().await {
+        store.push_line(&id, format!("✗ flush error: {e}"));
+        cleanup_output(&output_abs);
+        store.finish(&id, false);
+        store.drop_cancel(&id);
+        return;
+    }
+
+    store.push_line(&id, "✓ done".into());
+    store.finish(&id, true);
+    store.drop_cancel(&id);
+}
+
 /// into the job log. Fails fast if the converter script is missing.
 pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Result<String, String> {
     if p.repo.trim().is_empty() {
@@ -352,6 +507,14 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
     } else {
         std::env::var(&cfg.hf_token_env).ok()
     };
+
+    if is_cmf_repo(&p.repo) && !use_python {
+        let ret_id = id.clone();
+        tokio::spawn(async move {
+            download_cmf_repo(p.repo, output_abs, hf_token, store, id, cancel).await;
+        });
+        return Ok(ret_id);
+    }
 
     // Program + args: `cortiq convert` by default, or the Python converter for
     // advanced options. Both stream `@PROGRESS <frac>` markers into the log.
@@ -554,5 +717,13 @@ mod tests {
         assert_eq!(map_quant("q1s"), "q1s");
         assert_eq!(map_quant("Q1T"), "q1t");
         assert_eq!(map_quant("F16"), "f16");
+    }
+
+    #[test]
+    fn test_is_cmf_repo_check() {
+        assert!(is_cmf_repo("infosave/Bonsai-8B_2bit_cmf"));
+        assert!(is_cmf_repo("infosave/Bonsai-1.7Bcmf"));
+        assert!(is_cmf_repo("user/model.cmf"));
+        assert!(!is_cmf_repo("Qwen/Qwen2.5-0.5B-Instruct"));
     }
 }

@@ -3,7 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.24] - 2026-07-21
+## [0.2.25] - 2026-07-21
+
+### Fixed
+- **Direct Ready CMF Download**: Importing pre-converted `.cmf` model repositories (e.g. `infosave/Bonsai-8B_2bit_cmf`) directly streams the ready `.cmf` file from Hugging Face instead of attempting a safetensors conversion without `config.json`.
+
 
 ### Added
 - **New Quantization Schemes**: Added support for `Q4_TILED` (q4t), `Q1T` (1.58-bit ternary), `Q1S` (1-bit sparse), `Q1P` (1-bit PTQ error diffusion), and `Q1` (pure binary) in converter backend and web admin UI.
