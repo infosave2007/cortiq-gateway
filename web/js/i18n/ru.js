@@ -373,7 +373,7 @@ export default {
   "import.failed": "Конвертация не удалась — смотрите лог.",
   "import.register": "Подключить как локальную модель",
   "import.registered": "Подключено как '{id}'. Запустите cortiq-server для обслуживания.",
-  "import.jobs": "Конвертации",
+  "import.jobs": "Загрузки / Конвертации",
   "import.cancel": "Отменить",
   "import.cancelling": "Отмена — удаляю недописанный файл…",
   "import.delete": "Удалить",

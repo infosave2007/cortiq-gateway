@@ -160,6 +160,14 @@ impl JobStore {
             }
         }
     }
+    fn update_quant(&self, id: &str, quant: String) {
+        if let Some(j) = self.jobs.lock().unwrap().get_mut(id) {
+            j.quant = quant.clone();
+            if !j.log.is_empty() && j.log[0].starts_with("→ downloading ready .cmf model") {
+                j.log[0] = format!("→ downloading ready .cmf model {} ({})", j.repo, quant);
+            }
+        }
+    }
     fn set_state(&self, id: &str, state: &str) {
         if let Some(j) = self.jobs.lock().unwrap().get_mut(id) {
             j.state = state.into();
@@ -321,6 +329,21 @@ async fn download_cmf_repo(
         }
     };
 
+    let path_lower = cmf_path.to_ascii_lowercase();
+    let detected_quant =
+        if path_lower.contains("-q1t.") || repo.to_ascii_lowercase().contains("2bit") {
+            "Q1T".to_string()
+        } else if path_lower.contains("-q1.") || repo.to_ascii_lowercase().contains("cmf") {
+            "Q1".to_string()
+        } else if path_lower.contains("-q4.") {
+            "Q4".to_string()
+        } else if path_lower.contains("-q8.") {
+            "Q8".to_string()
+        } else {
+            "READY_CMF".to_string()
+        };
+    store.update_quant(&id, detected_quant);
+
     store.push_line(&id, format!("→ downloading {cmf_path} from HuggingFace..."));
     store.set_progress(&id, 0.05, "downloading".into());
 
@@ -464,12 +487,19 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
 
     let id = gen_id(&p.repo);
     let is_cmf = is_cmf_repo(&p.repo);
-    let quant_display = if p.quant.is_empty() || p.quant == "auto" {
-        if is_cmf {
-            "READY_CMF".to_string()
+    let quant_display = if is_cmf {
+        let r = p.repo.to_lowercase();
+        if r.contains("2bit") || r.contains("q1t") {
+            "Q1T".to_string()
+        } else if r.contains("1.7bcmf") || r.contains("27bcmf") || r.contains("cmf") {
+            "Q1".to_string()
+        } else if p.quant.is_empty() || p.quant == "auto" || p.quant == "Q8_2F" {
+            "Q1".to_string()
         } else {
-            "q8".to_string()
+            p.quant.clone()
         }
+    } else if p.quant.is_empty() || p.quant == "auto" {
+        "q8".to_string()
     } else {
         p.quant.clone()
     };
