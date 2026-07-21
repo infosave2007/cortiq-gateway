@@ -3,7 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.28] - 2026-07-21
+## [0.2.29] - 2026-07-21
+
+### Fixed
+- **Duplicate Local Model Registration**: Fixed `duplicate managed model id` conflict in `register_import` by cleanly routing managed CMF models directly into `[[cmf.servers]]` with automatic free port allocation without pushing duplicate entries to `[[models]]`.
+
 
 ### Fixed
 - **Quantization Badge & Title for Pre-Converted Models**: Automatically detect quantization (`Q1`, `Q1T`) for ready-to-run `.cmf` models (e.g. `infosave/Bonsai-27Bcmf`) from repo name and downloaded filename, resolving default `Q8_2F` badge fallback. Updated section title to "Загрузки / Конвертации" ("Downloads & Conversions").
