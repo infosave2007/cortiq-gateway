@@ -374,7 +374,7 @@ export default {
   "import.failed": "Conversion failed — see the log.",
   "import.register": "Register as local model",
   "import.registered": "Registered as '{id}'. Run cortiq-server to serve it.",
-  "import.jobs": "Conversions",
+  "import.jobs": "Downloads & Conversions",
   "import.cancel": "Cancel",
   "import.cancelling": "Cancelling — cleaning up partial output…",
   "import.delete": "Delete",

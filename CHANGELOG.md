@@ -3,7 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.27] - 2026-07-21
+## [0.2.28] - 2026-07-21
+
+### Fixed
+- **Quantization Badge & Title for Pre-Converted Models**: Automatically detect quantization (`Q1`, `Q1T`) for ready-to-run `.cmf` models (e.g. `infosave/Bonsai-27Bcmf`) from repo name and downloaded filename, resolving default `Q8_2F` badge fallback. Updated section title to "Загрузки / Конвертации" ("Downloads & Conversions").
+
 
 ### Fixed
 - **Automatic CMF Local Server Lifecycle**: Registering an imported `.cmf` model automatically adds it to `[[cmf.servers]]` and reloads the runtime (`cmf_runtime::manage`), automatically spawning `cortiq serve` on port 8090 so chat completion requests route seamlessly without `upstream unavailable` errors.
