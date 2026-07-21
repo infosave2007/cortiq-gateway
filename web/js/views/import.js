@@ -21,9 +21,9 @@ const QUANTS = [
 ];
 
 const FEATURED_REPOS = [
-  { id: "infosave/Bonsai-1.7Bcmf", label: "Bonsai 1.7B CMF", badge: "1.7B · Ready .cmf" },
-  { id: "infosave/Bonsai-8B_2bit_cmf", label: "Bonsai 8B 2-bit CMF", badge: "8B · Ready .cmf" },
-  { id: "infosave/Bonsai-27Bcmf", label: "Bonsai 27B CMF", badge: "27B · Ready .cmf" },
+  { id: "infosave/Bonsai-1.7Bcmf", label: "Bonsai 1.7B CMF", badge: "1.7B · Q1", quant: "Q1" },
+  { id: "infosave/Bonsai-8B_2bit_cmf", label: "Bonsai 8B 2-bit CMF", badge: "8B · Q1T", quant: "Q1T" },
+  { id: "infosave/Bonsai-27Bcmf", label: "Bonsai 27B CMF", badge: "27B · Q1", quant: "Q1" },
 ];
 
 
@@ -390,7 +390,7 @@ export function renderImport() {
       try {
         await api.startImport({
           repo: item.id,
-          quant: "Q8_2F",
+          quant: item.quant || "READY_CMF",
           name: item.id.split("/").pop().toLowerCase(),
         });
         toast(t("import.started"), "ok");

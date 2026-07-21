@@ -3,7 +3,12 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.25] - 2026-07-21
+## [0.2.26] - 2026-07-21
+
+### Fixed
+- **Multi-GB Ready CMF Download Stream**: Replaced HTTP stream decoder with a streaming process downloader (`curl`) for pre-converted `.cmf` models to support multi-gigabyte Hugging Face LFS repositories without 30s/60s socket timeouts.
+- **Ready CMF Quantization & UI Labels**: Set correct quantization badges (`Q1`, `Q1T`) for featured ready-to-run `.cmf` models and removed misleading "converting" log messages for direct downloads.
+
 
 ### Fixed
 - **Direct Ready CMF Download**: Importing pre-converted `.cmf` model repositories (e.g. `infosave/Bonsai-8B_2bit_cmf`) directly streams the ready `.cmf` file from Hugging Face instead of attempting a safetensors conversion without `config.json`.
