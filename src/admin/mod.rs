@@ -1304,32 +1304,46 @@ async fn register_import(State(state): State<SharedState>, Path(job): Path<Strin
         .unwrap_or_else(|| "cmf-local".into());
     let id = format!("cmf-{base}");
     let mut cfg = current_cfg(&state);
-    if cfg.models.iter().any(|m| m.id == id) {
-        return Err(ApiError::bad(format!("model '{id}' already registered")));
+
+    let is_in_models = cfg.models.iter().any(|m| m.id == id);
+    let is_in_servers = cfg
+        .cmf
+        .servers
+        .iter()
+        .any(|s| s.id == id || s.model == j.output);
+
+    if is_in_models || is_in_servers {
+        return Err(ApiError::bad(format!("model '{id}' is already registered")));
     }
-    cfg.models.push(crate::config::ModelCfg {
-        id: id.clone(),
-        provider: "openai".into(),
-        base_url: cfg.cmf.cortiq_server_url.clone(),
-        model: base,
-        cost_tier: "local".into(),
-        price_in: 0.0,
-        price_out: 0.0,
-        kind: "chat".into(),
-        api_key_env: None,
-        caps: Vec::new(),
-    });
+
     if cfg.cmf.manage_server {
-        let port = cfg.cmf.local_port;
-        if !cfg.cmf.servers.iter().any(|s| s.model == j.output) {
-            cfg.cmf.servers.push(crate::config::CmfServer {
-                id: id.clone(),
-                model: j.output.clone(),
-                port,
-                threads: cfg.cmf.threads,
-                gpu: cfg.cmf.gpu,
-            });
-        }
+        let host = if cfg.cmf.local_host.trim().is_empty() {
+            "127.0.0.1"
+        } else {
+            &cfg.cmf.local_host
+        };
+        let base_port = cfg.cmf.servers.iter().map(|s| s.port).max().unwrap_or(8089);
+        let port = next_free_port(host, base_port).unwrap_or_else(|| base_port + 1);
+        cfg.cmf.servers.push(crate::config::CmfServer {
+            id: id.clone(),
+            model: j.output.clone(),
+            port,
+            threads: cfg.cmf.threads,
+            gpu: cfg.cmf.gpu,
+        });
+    } else {
+        cfg.models.push(crate::config::ModelCfg {
+            id: id.clone(),
+            provider: "openai".into(),
+            base_url: cfg.cmf.cortiq_server_url.clone(),
+            model: base,
+            cost_tier: "local".into(),
+            price_in: 0.0,
+            price_out: 0.0,
+            kind: "chat".into(),
+            api_key_env: None,
+            caps: Vec::new(),
+        });
     }
     state.reload(cfg)?;
     ok(json!({ "ok": true, "model_id": id }))
