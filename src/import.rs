@@ -260,10 +260,15 @@ fn sanitize(s: &str) -> String {
 /// Map the UI quant label to the native `cortiq` quant flag.
 fn map_quant(q: &str) -> &'static str {
     match q.to_ascii_uppercase().as_str() {
+        s if s.starts_with("Q4T") || s == "Q4_TILED" => "q4t",
         s if s.starts_with("Q4") => "q4",
-        "Q8_2F" => "q8_2f",
+        "Q8_2F" | "Q82F" => "q8_2f",
         "F16" | "FP16" => "f16",
         "VBIT" => "vbit",
+        "Q1" => "q1",
+        "Q1P" | "Q1_PTQ" => "q1p",
+        "Q1S" | "Q1_MASK" => "q1s",
+        "Q1T" | "Q1_TERNARY" => "q1t",
         _ => "q8",
     }
 }
@@ -529,4 +534,25 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
     });
 
     Ok(ret_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_quant_variants() {
+        assert_eq!(map_quant("Q8_2F"), "q8_2f");
+        assert_eq!(map_quant("q82f"), "q8_2f");
+        assert_eq!(map_quant("Q8_ROW"), "q8");
+        assert_eq!(map_quant("Q4_BLOCK"), "q4");
+        assert_eq!(map_quant("Q4_TILED"), "q4t");
+        assert_eq!(map_quant("q4t"), "q4t");
+        assert_eq!(map_quant("vbit"), "vbit");
+        assert_eq!(map_quant("q1"), "q1");
+        assert_eq!(map_quant("Q1P"), "q1p");
+        assert_eq!(map_quant("q1s"), "q1s");
+        assert_eq!(map_quant("Q1T"), "q1t");
+        assert_eq!(map_quant("F16"), "f16");
+    }
 }

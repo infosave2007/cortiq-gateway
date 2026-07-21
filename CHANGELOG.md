@@ -3,7 +3,14 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.24] - 2026-07-21
+
+### Added
+- **New Quantization Schemes**: Added support for `Q4_TILED` (q4t), `Q1T` (1.58-bit ternary), `Q1S` (1-bit sparse), `Q1P` (1-bit PTQ error diffusion), and `Q1` (pure binary) in converter backend and web admin UI.
+- **Featured Ready-to-Run .cmf Models**: Added 1-tap download cards for pre-converted `.cmf` models (`infosave/Bonsai-1.7Bcmf`, `infosave/Bonsai-8B_2bit_cmf`, `infosave/Bonsai-27Bcmf`).
+
 ## [Unreleased]
+
 
 ### Added
 - **Docker Compose** quickstart (`docker-compose.yml` + `config/gateway.compose.toml`):

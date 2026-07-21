@@ -10,10 +10,22 @@ const QUANTS = [
   ["Q8_2F", "import.q.q8_2f"],
   ["Q8_ROW", "import.q.q8_row"],
   ["Q4_BLOCK", "import.q.q4"],
+  ["Q4_TILED", "import.q.q4_tiled"],
   ["VBIT", "import.q.vbit"],
+  ["Q1T", "import.q.q1t"],
+  ["Q1S", "import.q.q1s"],
+  ["Q1P", "import.q.q1p"],
+  ["Q1", "import.q.q1"],
   ["F16", "import.q.f16"],
   ["F32", "import.q.f32"],
 ];
+
+const FEATURED_REPOS = [
+  { id: "infosave/Bonsai-1.7Bcmf", label: "Bonsai 1.7B CMF", badge: "1.7B · Ready .cmf" },
+  { id: "infosave/Bonsai-8B_2bit_cmf", label: "Bonsai 8B 2-bit CMF", badge: "8B · Ready .cmf" },
+  { id: "infosave/Bonsai-27Bcmf", label: "Bonsai 27B CMF", badge: "27B · Ready .cmf" },
+];
+
 
 function field(label, control, hint) {
   return h("label", { class: "field" }, h("span", {}, label), control,
@@ -358,6 +370,46 @@ export function renderImport() {
     );
   }
 
+  function featuredCard(item) {
+    const card = h(
+      "div",
+      { class: "hf-card featured-card" },
+      h("div", { class: "row", style: "align-items:center; justify-content:space-between;" },
+        h("div", {},
+          h("div", { class: "hf-id" }, item.label),
+          h("div", { class: "hf-meta" },
+            h("span", { class: "badge" }, item.badge),
+            h("span", { class: "muted" }, item.id)
+          )
+        ),
+        h("button", { class: "btn primary sm" }, "⬇ " + t("import.directDownload"))
+      )
+    );
+    card.querySelector("button").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      try {
+        await api.startImport({
+          repo: item.id,
+          quant: "Q8_2F",
+          name: item.id.split("/").pop().toLowerCase(),
+        });
+        toast(t("import.started"), "ok");
+        refreshJobs();
+        jobsHost.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } catch (err) {
+        toast(err.message, "err");
+      }
+    });
+    return card;
+  }
+
+  const featuredHost = h(
+    "div",
+    { class: "card featured-section" },
+    h("div", { class: "card-title" }, "⚡ " + t("import.featuredTitle")),
+    h("div", { class: "hf-grid" }, ...FEATURED_REPOS.map(featuredCard))
+  );
+
   const root = h(
     "div",
     {},
@@ -365,6 +417,7 @@ export function renderImport() {
       h("h2", {}, t("nav.import")),
       h("div", { class: "muted" }, t("import.subtitle"))),
     jobsHost, // progress panel on top, above the search
+    featuredHost, // featured ready-to-run models
     h("div", { class: "card" }, searchIn, results),
     formHost
   );
@@ -372,3 +425,4 @@ export function renderImport() {
   refreshJobs(); // resume: show any running/recent conversions immediately
   return root;
 }
+
