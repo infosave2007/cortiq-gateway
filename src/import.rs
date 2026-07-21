@@ -286,23 +286,10 @@ async fn download_cmf_repo(
     id: String,
     cancel: Arc<Notify>,
 ) {
-    store.push_line(&id, format!("→ downloading ready .cmf model from {}", repo));
     store.set_progress(&id, 0.0, "listing files".into());
 
-    let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            store.push_line(&id, format!("✗ failed to build HTTP client: {e}"));
-            store.finish(&id, false);
-            store.drop_cancel(&id);
-            return;
-        }
-    };
-
     let tree_url = format!("https://huggingface.co/api/models/{repo}/tree/main?recursive=true");
+    let client = reqwest::Client::new();
     let mut req = client.get(&tree_url).header("User-Agent", "cortiq-gateway");
     if let Some(t) = &hf_token {
         req = req.bearer_auth(t);
@@ -338,93 +325,83 @@ async fn download_cmf_repo(
     store.set_progress(&id, 0.05, "downloading".into());
 
     let download_url = format!("https://huggingface.co/{repo}/resolve/main/{cmf_path}");
-    let mut req = client
-        .get(&download_url)
-        .header("User-Agent", "cortiq-gateway");
+
+    let mut cmd = tokio::process::Command::new("curl");
+    cmd.arg("-f").arg("-L").arg("-#").arg("-o").arg(&output_abs);
+
     if let Some(t) = &hf_token {
-        req = req.bearer_auth(t);
+        cmd.arg("-H").arg(format!("Authorization: Bearer {t}"));
     }
 
-    let mut resp = match req.send().await {
-        Ok(r) if r.status().is_success() => r,
-        Ok(r) => {
-            store.push_line(&id, format!("✗ HF download error: HTTP {}", r.status()));
-            store.finish(&id, false);
-            store.drop_cancel(&id);
-            return;
-        }
+    cmd.arg(&download_url);
+    cmd.stderr(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::null());
+
+    let mut child = match cmd.spawn() {
+        Ok(c) => c,
         Err(e) => {
-            store.push_line(&id, format!("✗ network error: {e}"));
+            store.push_line(&id, format!("✗ failed to start curl download: {e}"));
             store.finish(&id, false);
             store.drop_cancel(&id);
             return;
         }
     };
 
-    let total_bytes = resp.content_length();
-    let mut file = match tokio::fs::File::create(&output_abs).await {
-        Ok(f) => f,
-        Err(e) => {
-            store.push_line(&id, format!("✗ failed to create file {output_abs}: {e}"));
-            store.finish(&id, false);
-            store.drop_cancel(&id);
-            return;
-        }
-    };
-
-    use tokio::io::AsyncWriteExt;
-    let mut downloaded: u64 = 0;
-
-    loop {
-        tokio::select! {
-            _ = cancel.notified() => {
-                let _ = tokio::fs::remove_file(&output_abs).await;
-                store.push_line(&id, "✗ cancelled by user — partial output removed".into());
-                store.set_state(&id, "cancelled");
-                store.drop_cancel(&id);
-                return;
-            }
-            chunk_opt = resp.chunk() => {
-                match chunk_opt {
-                    Ok(Some(chunk)) => {
-                        if let Err(e) = file.write_all(&chunk).await {
-                            store.push_line(&id, format!("✗ write error: {e}"));
-                            cleanup_output(&output_abs);
-                            store.finish(&id, false);
-                            store.drop_cancel(&id);
-                            return;
+    let stderr = child.stderr.take();
+    let mut t_err = None;
+    if let Some(err_stream) = stderr {
+        let store_clone = store.clone();
+        let id_clone = id.clone();
+        t_err = Some(tokio::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let mut reader = err_stream;
+            let mut buf = [0u8; 256];
+            while let Ok(n) = reader.read(&mut buf).await {
+                if n == 0 {
+                    break;
+                }
+                let text = String::from_utf8_lossy(&buf[..n]);
+                for word in text.split_whitespace() {
+                    if let Some(num_str) = word.strip_suffix('%') {
+                        if let Ok(pct) = num_str.parse::<f32>() {
+                            let frac = (pct / 100.0).clamp(0.0, 1.0);
+                            store_clone.set_progress(&id_clone, frac, "downloading".into());
                         }
-                        downloaded += chunk.len() as u64;
-                        if let Some(total) = total_bytes {
-                            if total > 0 {
-                                let frac = (downloaded as f32 / total as f32).clamp(0.0, 1.0);
-                                store.set_progress(&id, frac, "downloading".into());
-                            }
-                        }
-                    }
-                    Ok(None) => break,
-                    Err(e) => {
-                        store.push_line(&id, format!("✗ download stream error: {e}"));
-                        cleanup_output(&output_abs);
-                        store.finish(&id, false);
-                        store.drop_cancel(&id);
-                        return;
                     }
                 }
             }
+        }));
+    }
+
+    tokio::select! {
+        status_res = child.wait() => {
+            if let Some(t) = t_err { t.abort(); }
+            match status_res {
+                Ok(status) if status.success() => {
+                    store.push_line(&id, "✓ done".into());
+                    store.finish(&id, true);
+                }
+                Ok(status) => {
+                    cleanup_output(&output_abs);
+                    store.push_line(&id, format!("✗ download failed: exit code {:?}", status.code()));
+                    store.finish(&id, false);
+                }
+                Err(e) => {
+                    cleanup_output(&output_abs);
+                    store.push_line(&id, format!("✗ download process error: {e}"));
+                    store.finish(&id, false);
+                }
+            }
+        }
+        _ = cancel.notified() => {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+            if let Some(t) = t_err { t.abort(); }
+            cleanup_output(&output_abs);
+            store.push_line(&id, "✗ cancelled by user — partial output removed".into());
+            store.set_state(&id, "cancelled");
         }
     }
-
-    if let Err(e) = file.flush().await {
-        store.push_line(&id, format!("✗ flush error: {e}"));
-        cleanup_output(&output_abs);
-        store.finish(&id, false);
-        store.drop_cancel(&id);
-        return;
-    }
-
-    store.push_line(&id, "✓ done".into());
-    store.finish(&id, true);
     store.drop_cancel(&id);
 }
 
@@ -486,13 +463,30 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
         .unwrap_or_else(|_| output.clone());
 
     let id = gen_id(&p.repo);
+    let is_cmf = is_cmf_repo(&p.repo);
+    let quant_display = if p.quant.is_empty() || p.quant == "auto" {
+        if is_cmf {
+            "READY_CMF".to_string()
+        } else {
+            "q8".to_string()
+        }
+    } else {
+        p.quant.clone()
+    };
     store.insert(Job {
         id: id.clone(),
         repo: p.repo.clone(),
-        quant: p.quant.clone(),
+        quant: quant_display.clone(),
         output: output_abs.clone(),
         state: "running".into(),
-        log: vec![format!("→ converting {} to {} ({})", p.repo, base, p.quant)],
+        log: if is_cmf {
+            vec![format!(
+                "→ downloading ready .cmf model {} ({})",
+                p.repo, quant_display
+            )]
+        } else {
+            vec![format!("→ converting {} to {} ({})", p.repo, base, p.quant)]
+        },
         started: now(),
         finished: None,
         size_bytes: None,
@@ -508,7 +502,7 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
         std::env::var(&cfg.hf_token_env).ok()
     };
 
-    if is_cmf_repo(&p.repo) && !use_python {
+    if is_cmf && !use_python {
         let ret_id = id.clone();
         tokio::spawn(async move {
             download_cmf_repo(p.repo, output_abs, hf_token, store, id, cancel).await;
