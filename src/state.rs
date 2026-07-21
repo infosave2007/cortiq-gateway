@@ -145,6 +145,14 @@ impl AppState {
         let live = Live::build(new_cfg.clone(), &self.secrets, self.router_status.clone())?;
         new_cfg.save(&self.config_path)?;
         self.live.store(Arc::new(live));
+
+        let cmf_rt = self.cmf.clone();
+        let cmf_cfg = new_cfg.cmf.clone();
+        tokio::spawn(async move {
+            cmf_rt.stop().await;
+            crate::cmf_runtime::manage(cmf_rt, cmf_cfg).await;
+        });
+
         Ok(())
     }
 

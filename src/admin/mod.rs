@@ -1319,6 +1319,18 @@ async fn register_import(State(state): State<SharedState>, Path(job): Path<Strin
         api_key_env: None,
         caps: Vec::new(),
     });
+    if cfg.cmf.manage_server {
+        let port = cfg.cmf.local_port;
+        if !cfg.cmf.servers.iter().any(|s| s.model == j.output) {
+            cfg.cmf.servers.push(crate::config::CmfServer {
+                id: id.clone(),
+                model: j.output.clone(),
+                port,
+                threads: cfg.cmf.threads,
+                gpu: cfg.cmf.gpu,
+            });
+        }
+    }
     state.reload(cfg)?;
     ok(json!({ "ok": true, "model_id": id }))
 }

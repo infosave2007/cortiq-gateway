@@ -3,7 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.26] - 2026-07-21
+## [0.2.27] - 2026-07-21
+
+### Fixed
+- **Automatic CMF Local Server Lifecycle**: Registering an imported `.cmf` model automatically adds it to `[[cmf.servers]]` and reloads the runtime (`cmf_runtime::manage`), automatically spawning `cortiq serve` on port 8090 so chat completion requests route seamlessly without `upstream unavailable` errors.
+
 
 ### Fixed
 - **Multi-GB Ready CMF Download Stream**: Replaced HTTP stream decoder with a streaming process downloader (`curl`) for pre-converted `.cmf` models to support multi-gigabyte Hugging Face LFS repositories without 30s/60s socket timeouts.
