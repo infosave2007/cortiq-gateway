@@ -50,7 +50,14 @@ export function toast(msg, kind = "info", ms = 3200) {
 // Modal dialog. `body` is a DOM node; `onSave` returns a Promise; returns nothing.
 export function modal(title, body, onSave, saveLabel) {
   const backdrop = h("div", { class: "modal-backdrop" });
-  const close = () => backdrop.remove();
+  const onKeydown = (e) => {
+    if (e.key === "Escape") close();
+  };
+  const close = () => {
+    backdrop.remove();
+    document.body.classList.remove("modal-open");
+    document.removeEventListener("keydown", onKeydown);
+  };
   backdrop.addEventListener("click", (e) => {
     if (e.target === backdrop) close();
   });
@@ -77,6 +84,8 @@ export function modal(title, body, onSave, saveLabel) {
     )
   );
   backdrop.appendChild(card);
+  document.body.classList.add("modal-open");
+  document.addEventListener("keydown", onKeydown);
   document.body.appendChild(backdrop);
   return { close };
 }

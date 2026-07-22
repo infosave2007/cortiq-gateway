@@ -331,7 +331,7 @@ export async function renderSettings() {
       drawer.style.display = drawer.style.display === "none" ? "block" : "none";
     });
 
-    const row = h("div", { class: "flex wrap", style: "gap:6px;align-items:center;margin:6px 0" },
+    const row = h("div", { class: "flex wrap cmf-server-row", style: "gap:6px;align-items:center;margin:6px 0" },
       idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), gearBtn, removeBtn, st, drawer);
     const entry = { node: row, read: () => ({
       id: idIn.value.trim() || autoId(modelSel.value),
