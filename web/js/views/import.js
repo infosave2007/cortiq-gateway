@@ -2,7 +2,7 @@
 // live progress view. Search HF, pick quantization + advanced params, watch
 // the conversion (multiple in parallel, resumable across tab switches), then
 // register the result as a local model.
-import { h, mount, toast } from "../ui.js";
+import { h, mount, toast, opt } from "../ui.js";
 import { t } from "../i18n.js";
 import { api } from "../api.js";
 
@@ -30,9 +30,6 @@ const FEATURED_REPOS = [
 function field(label, control, hint) {
   return h("label", { class: "field" }, h("span", {}, label), control,
     hint ? h("div", { class: "hint" }, hint) : null);
-}
-function opt(v, label, sel) {
-  return h("option", { value: v, selected: sel ? true : null }, label || v);
 }
 function fmtNum(n) {
   if (n == null) return "—";

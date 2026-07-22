@@ -7,9 +7,6 @@ import { appState } from "../app.js";
 function field(label, control, hint) {
   return h("label", { class: "field" }, h("span", {}, label), control, hint ? h("div", { class: "hint" }, hint) : null);
 }
-function opt(v, label, sel) {
-  return h("option", { value: v, selected: sel ? true : null }, label || v);
-}
 
 function keyBadge(src) {
   const map = { store: "store", env: "env", missing: "bad", none: "" };
@@ -124,10 +121,10 @@ function modelForm(meta, existing) {
   const maxTokIn = h("input", { type: "number", min: "1", placeholder: "2048", value: m.max_tokens ?? "" });
   const thinkIn = h("input", { type: "number", min: "0", placeholder: "1024", value: m.think_budget ?? "" });
   const o1Sel = h("select", {},
-    opt("", t("import.adv.auto")),
-    opt("all", "all — O(1) Attention"),
-    opt("deep", "deep — O(1) Deep"),
-    opt("off", "off — Standard"));
+    h("option", { value: "" }, t("import.adv.auto")),
+    h("option", { value: "all" }, "all — O(1) Attention"),
+    h("option", { value: "deep" }, "deep — O(1) Deep"),
+    h("option", { value: "off" }, "off — Standard"));
   if (m.o1) o1Sel.value = m.o1;
   const skipMtpCb = h("input", { type: "checkbox", checked: m.skip_mtp ? true : null });
   const sysPromptIn = h("textarea", { rows: 2, placeholder: t("models.form.systemPromptPlaceholder"), value: m.system_prompt || "" });

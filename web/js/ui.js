@@ -23,6 +23,10 @@ export function clear(node) {
   while (node && node.firstChild) node.removeChild(node.firstChild);
 }
 
+export function opt(v, label, sel) {
+  return h("option", { value: v, selected: sel ? true : null }, label || v);
+}
+
 export function mount(node, ...children) {
   clear(node);
   for (const c of children.flat())
