@@ -118,6 +118,36 @@ function modelForm(meta, existing) {
     : existing && existing.key_source === "env" ? t("models.form.keyFromEnv")
     : t("models.form.apiKeyHint");
 
+  // ⚙ Generation & Thinking Parameters
+  const tempIn = h("input", { type: "number", step: "0.05", min: "0", max: "2.0", placeholder: "0.7", value: m.temperature ?? "" });
+  const topPIn = h("input", { type: "number", step: "0.05", min: "0", max: "1.0", placeholder: "0.9", value: m.top_p ?? "" });
+  const maxTokIn = h("input", { type: "number", min: "1", placeholder: "2048", value: m.max_tokens ?? "" });
+  const thinkIn = h("input", { type: "number", min: "0", placeholder: "1024", value: m.think_budget ?? "" });
+  const o1Sel = h("select", {},
+    opt("", t("import.adv.auto")),
+    opt("all", "all — O(1) Attention"),
+    opt("deep", "deep — O(1) Deep"),
+    opt("off", "off — Standard"));
+  if (m.o1) o1Sel.value = m.o1;
+  const skipMtpCb = h("input", { type: "checkbox", checked: m.skip_mtp ? true : null });
+  const sysPromptIn = h("textarea", { rows: 2, placeholder: t("models.form.systemPromptPlaceholder"), value: m.system_prompt || "" });
+
+  const advParams = h(
+    "details",
+    { class: "adv-params", style: "margin-top:12px;padding:10px;border:1px solid var(--border);border-radius:6px;" },
+    h("summary", { style: "font-weight:600;cursor:pointer;" }, "⚙ " + t("models.form.paramsTitle")),
+    h("div", { class: "row", style: "margin-top:8px" },
+      field(t("models.form.temperature"), tempIn, t("models.form.temperatureHint")),
+      field(t("models.form.topP"), topPIn, t("models.form.topPHint"))),
+    h("div", { class: "row" },
+      field(t("models.form.maxTokens"), maxTokIn, t("models.form.maxTokensHint")),
+      field(t("models.form.thinkBudget"), thinkIn, t("models.form.thinkBudgetHint"))),
+    h("div", { class: "row" },
+      field("O(1) Attention", o1Sel, t("import.adv.o1Hint")),
+      field("MTP", h("label", { class: "check" }, skipMtpCb, t("import.adv.skipMtp")))),
+    field(t("models.form.systemPrompt"), sysPromptIn, t("models.form.systemPromptHint"))
+  );
+
   const node = h(
     "div",
     {},
@@ -128,7 +158,8 @@ function modelForm(meta, existing) {
     dl,
     h("div", { class: "row" }, field(t("models.form.kind"), kindSel), field(t("models.form.costTier"), tierSel)),
     h("div", { class: "row" }, field(t("models.form.priceIn"), priceInIn), field(t("models.form.priceOut"), priceOutIn)),
-    field(t("models.form.caps"), h("div", { class: "flex wrap" }, ...capInputs.map(({ c, cb }) => h("label", { class: "check" }, cb, c))))
+    field(t("models.form.caps"), h("div", { class: "flex wrap" }, ...capInputs.map(({ c, cb }) => h("label", { class: "check" }, cb, c)))),
+    advParams
   );
 
   const getValue = () => {
@@ -147,6 +178,13 @@ function modelForm(meta, existing) {
         price_out: parseFloat(priceOutIn.value) || 0,
         api_key_env: hasKey ? keyEnv : null,
         caps: capInputs.filter(({ cb }) => cb.checked).map(({ c }) => c),
+        temperature: tempIn.value !== "" ? parseFloat(tempIn.value) : null,
+        top_p: topPIn.value !== "" ? parseFloat(topPIn.value) : null,
+        max_tokens: maxTokIn.value !== "" ? parseInt(maxTokIn.value) : null,
+        think_budget: thinkIn.value !== "" ? parseInt(thinkIn.value) : null,
+        o1: o1Sel.value || null,
+        skip_mtp: skipMtpCb.checked,
+        system_prompt: sysPromptIn.value.trim() || null,
       },
       secret: typedKey,
       keyEnv,

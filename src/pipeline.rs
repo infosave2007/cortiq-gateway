@@ -341,7 +341,64 @@ impl Pipeline {
                 route_source
             );
 
-            match provider.chat(req.clone()).await {
+            let mut req_call = req.clone();
+            if let Some(m_cfg) = live.cfg.models.iter().find(|m| m.id == model_id) {
+                if req_call.params.temperature.is_none() {
+                    req_call.params.temperature = m_cfg.temperature;
+                }
+                if req_call.params.top_p.is_none() {
+                    req_call.params.top_p = m_cfg.top_p;
+                }
+                if req_call.params.max_tokens.is_none() {
+                    req_call.params.max_tokens = m_cfg.max_tokens;
+                }
+                if req_call.params.think_budget.is_none() {
+                    req_call.params.think_budget = m_cfg.think_budget;
+                }
+                if let Some(sys) = &m_cfg.system_prompt {
+                    if !sys.trim().is_empty()
+                        && !req_call.messages.iter().any(|m| m.role == "system")
+                    {
+                        req_call.messages.insert(
+                            0,
+                            Message {
+                                role: "system".into(),
+                                content: sys.clone(),
+                                tool_calls: Vec::new(),
+                            },
+                        );
+                    }
+                }
+            } else if let Some(s_cfg) = live.cfg.cmf.servers.iter().find(|s| s.id == model_id) {
+                if req_call.params.temperature.is_none() {
+                    req_call.params.temperature = s_cfg.temperature;
+                }
+                if req_call.params.top_p.is_none() {
+                    req_call.params.top_p = s_cfg.top_p;
+                }
+                if req_call.params.max_tokens.is_none() {
+                    req_call.params.max_tokens = s_cfg.max_tokens;
+                }
+                if req_call.params.think_budget.is_none() {
+                    req_call.params.think_budget = s_cfg.think_budget;
+                }
+                if let Some(sys) = &s_cfg.system_prompt {
+                    if !sys.trim().is_empty()
+                        && !req_call.messages.iter().any(|m| m.role == "system")
+                    {
+                        req_call.messages.insert(
+                            0,
+                            Message {
+                                role: "system".into(),
+                                content: sys.clone(),
+                                tool_calls: Vec::new(),
+                            },
+                        );
+                    }
+                }
+            }
+
+            match provider.chat(req_call).await {
                 Ok(mut resp) => {
                     let cost =
                         provider.price(resp.usage.prompt_tokens, resp.usage.completion_tokens);

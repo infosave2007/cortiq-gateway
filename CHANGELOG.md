@@ -3,7 +3,11 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.29] - 2026-07-21
+## [0.2.30] - 2026-07-22
+
+### Added
+- **Per-Model Generation & Reasoning Parameters**: Full support in Web UI and Gateway core for per-model generation defaults: Temperature, Top-P, Max Tokens, Think Budget (Reasoning mode), O(1) Constant-Memory Streaming Attention (`o1`), MTP (Multi-Token Prediction toggle `skip_mtp`), and default System Prompt.
+
 
 ### Fixed
 - **Duplicate Local Model Registration**: Fixed `duplicate managed model id` conflict in `register_import` by cleanly routing managed CMF models directly into `[[cmf.servers]]` with automatic free port allocation without pushing duplicate entries to `[[models]]`.

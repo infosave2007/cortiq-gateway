@@ -42,8 +42,15 @@ impl OpenAiProvider {
         if let Some(t) = req.params.temperature {
             body["temperature"] = t.into();
         }
+        if let Some(p) = req.params.top_p {
+            body["top_p"] = p.into();
+        }
         if let Some(m) = req.params.max_tokens {
             body["max_tokens"] = m.into();
+        }
+        if let Some(tb) = req.params.think_budget {
+            body["think_budget"] = tb.into();
+            body["reasoning_effort"] = tb.into();
         }
         if !req.tools.is_empty() {
             body["tools"] = serde_json::Value::Array(req.tools.clone());

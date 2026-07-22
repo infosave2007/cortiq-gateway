@@ -49,6 +49,13 @@ impl Registry {
                 kind: "chat".into(),
                 api_key_env: None,
                 caps: Vec::new(),
+                temperature: s.temperature,
+                top_p: s.top_p,
+                max_tokens: s.max_tokens,
+                think_budget: s.think_budget,
+                system_prompt: s.system_prompt.clone(),
+                o1: s.o1.clone(),
+                skip_mtp: s.skip_mtp,
             };
             by_id.insert(m.id.clone(), Arc::new(OpenAiProvider::new(&m, None)?));
         }

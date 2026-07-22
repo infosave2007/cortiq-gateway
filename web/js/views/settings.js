@@ -253,9 +253,51 @@ export async function renderSettings() {
       } catch (e) { mount(st, String(e.message || e)); }
       checkBtn.disabled = false;
     });
+    // ⚙ Model Generation & Thinking Parameters drawer
+    const tempIn = h("input", { type: "number", step: "0.05", min: "0", max: "2.0", placeholder: "0.7", value: sv.temperature ?? "", style: "width:65px" });
+    const topPIn = h("input", { type: "number", step: "0.05", min: "0", max: "1.0", placeholder: "0.9", value: sv.top_p ?? "", style: "width:65px" });
+    const maxTokIn = h("input", { type: "number", min: "1", placeholder: "2048", value: sv.max_tokens ?? "", style: "width:80px" });
+    const thinkIn = h("input", { type: "number", min: "0", placeholder: "1024", value: sv.think_budget ?? "", style: "width:80px" });
+    const o1Sel = h("select", { style: "width:110px" },
+      opt("", "O(1) auto"),
+      opt("all", "O(1) all"),
+      opt("deep", "O(1) deep"),
+      opt("off", "O(1) off"));
+    if (sv.o1) o1Sel.value = sv.o1;
+    const skipMtpCb = h("input", { type: "checkbox", checked: sv.skip_mtp ? true : null });
+    const sysIn = h("input", { placeholder: t("models.form.systemPromptPlaceholder"), value: sv.system_prompt || "", style: "flex:1" });
+
+    const drawer = h("div", { class: "flex wrap gap-sm", style: "display:none;width:100%;margin-top:4px;padding:6px;background:var(--bg-subtle);border-radius:4px;align-items:center" },
+      h("span", { class: "small muted" }, "Temp:"), tempIn,
+      h("span", { class: "small muted" }, "Top-P:"), topPIn,
+      h("span", { class: "small muted" }, "MaxTokens:"), maxTokIn,
+      h("span", { class: "small muted" }, "ThinkBudget:"), thinkIn,
+      o1Sel,
+      h("label", { class: "check small" }, skipMtpCb, "Skip MTP"),
+      h("span", { class: "small muted" }, "System:"), sysIn
+    );
+
+    const gearBtn = h("button", { class: "btn small", type: "button", title: "⚙ " + t("models.form.paramsTitle") }, "⚙");
+    gearBtn.addEventListener("click", () => {
+      drawer.style.display = drawer.style.display === "none" ? "flex" : "none";
+    });
+
     const row = h("div", { class: "flex wrap", style: "gap:6px;align-items:center;margin:6px 0" },
-      idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), removeBtn, st);
-    const entry = { node: row, read: () => ({ id: idIn.value.trim() || autoId(modelSel.value), model: modelSel.value.trim(), port: parseInt(portIn.value) || 8090, threads: parseInt(threadsIn.value) || 0, gpu: gpuIn.checked }) };
+      idIn, modelSel, portIn, checkBtn, threadsIn, h("label", { class: "flex", style: "gap:4px" }, gpuIn, "GPU"), gearBtn, removeBtn, st, drawer);
+    const entry = { node: row, read: () => ({
+      id: idIn.value.trim() || autoId(modelSel.value),
+      model: modelSel.value.trim(),
+      port: parseInt(portIn.value) || 8090,
+      threads: parseInt(threadsIn.value) || 0,
+      gpu: gpuIn.checked,
+      temperature: tempIn.value !== "" ? parseFloat(tempIn.value) : null,
+      top_p: topPIn.value !== "" ? parseFloat(topPIn.value) : null,
+      max_tokens: maxTokIn.value !== "" ? parseInt(maxTokIn.value) : null,
+      think_budget: thinkIn.value !== "" ? parseInt(thinkIn.value) : null,
+      o1: o1Sel.value || null,
+      skip_mtp: skipMtpCb.checked,
+      system_prompt: sysIn.value.trim() || null,
+    }) };
     removeBtn.addEventListener("click", () => { const i = serverRows.indexOf(entry); if (i >= 0) serverRows.splice(i, 1); row.remove(); });
     serverRows.push(entry);
     serversWrap.appendChild(row);

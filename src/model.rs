@@ -29,6 +29,7 @@ pub struct GenParams {
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
     pub top_p: Option<f32>,
+    pub think_budget: Option<u32>,
     pub stop: Vec<String>,
     /// Fields we do not interpret but must proxy through to the provider.
     pub passthrough: serde_json::Map<String, serde_json::Value>,

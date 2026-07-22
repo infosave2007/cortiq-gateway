@@ -49,6 +49,10 @@ struct OpenAiChatRequest {
     #[serde(default)]
     top_p: Option<f32>,
     #[serde(default)]
+    think_budget: Option<u32>,
+    #[serde(default)]
+    reasoning_effort: Option<u32>,
+    #[serde(default)]
     stream: bool,
     #[serde(default)]
     tools: Vec<serde_json::Value>,
@@ -93,6 +97,7 @@ async fn handler(
             temperature: req.temperature,
             max_tokens: req.max_tokens,
             top_p: req.top_p,
+            think_budget: req.think_budget.or(req.reasoning_effort),
             stop: Vec::new(),
             passthrough: req.rest,
         },
