@@ -1,5 +1,5 @@
 // Models — pool table with add/edit modal, probe, and per-model secret entry.
-import { h, mount, modal, toast, confirmDialog, money } from "../ui.js";
+import { h, mount, modal, toast, confirmDialog, money, opt } from "../ui.js";
 import { t } from "../i18n.js";
 import { api } from "../api.js";
 import { appState } from "../app.js";

@@ -28,6 +28,17 @@ export const appState = { meta: null, health: null, version: "" };
 // allaigate site — where router keys are issued and topped up
 export const SITE_URL = "https://api.allaigate.com/";
 
+let mobileNavOpen = false;
+
+function setMobileNav(open) {
+  mobileNavOpen = !!open;
+  const app = document.querySelector(".app");
+  if (app) app.classList.toggle("nav-open", mobileNavOpen);
+  document.body.classList.toggle("mobile-nav-open", mobileNavOpen);
+  const toggle = document.querySelector(".menu-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", String(mobileNavOpen));
+}
+
 function currentRoute() {
   const id = location.hash.replace(/^#\/?/, "") || "dashboard";
   return ROUTES.find((r) => r.id === id) || ROUTES[0];
@@ -42,17 +53,18 @@ const FAVICON =
 function sidebar(activeId) {
   return h(
     "aside",
-    { class: "sidebar", id: "sidebar" },
+    { class: "sidebar", id: "sidebar", "aria-label": "Main navigation" },
     h(
       "div",
       { class: "brand" },
       h("img", { src: FAVICON, alt: "" }),
-      h("div", {}, h("b", {}, "allaigate"), h("div", { class: "sub" }, t("brand.sub")))
+      h("div", { class: "brand-copy" }, h("b", {}, "allaigate"), h("div", { class: "sub" }, t("brand.sub"))),
+      h("button", { class: "icon-btn nav-close", type: "button", title: "Close menu", "aria-label": "Close menu", onClick: () => setMobileNav(false) }, "×")
     ),
     ...ROUTES.map((r) =>
       h(
         "a",
-        { class: "nav-item" + (r.id === activeId ? " active" : ""), href: "#/" + r.id },
+        { class: "nav-item" + (r.id === activeId ? " active" : ""), href: "#/" + r.id, onClick: () => setMobileNav(false) },
         h("span", { class: "ico" }, r.icon),
         t("nav." + r.id)
       )
@@ -85,7 +97,7 @@ function statusPills() {
     : t("status.checking");
   return h(
     "div",
-    { class: "flex" },
+    { class: "flex status-pills" },
     h(
       "span",
       { class: "pill" },
@@ -136,6 +148,19 @@ function topbar(activeId) {
   return h(
     "header",
     { class: "topbar" },
+    h(
+      "button",
+      {
+        class: "icon-btn menu-toggle",
+        type: "button",
+        title: "Menu",
+        "aria-label": "Open menu",
+        "aria-controls": "sidebar",
+        "aria-expanded": String(mobileNavOpen),
+        onClick: () => setMobileNav(!mobileNavOpen),
+      },
+      h("span", { class: "hamburger", "aria-hidden": "true" }, h("i"), h("i"), h("i"))
+    ),
     h("div", { class: "title" }, t("nav." + activeId)),
     h(
       "div",
@@ -175,12 +200,15 @@ async function renderView() {
 
 function renderShell() {
   const route = currentRoute();
+  mobileNavOpen = false;
+  document.body.classList.remove("mobile-nav-open");
   mount(
     document.getElementById("app"),
     h(
       "div",
       { class: "app" },
       sidebar(route.id),
+      h("button", { class: "mobile-nav-backdrop", type: "button", tabindex: "-1", "aria-label": "Close menu", onClick: () => setMobileNav(false) }),
       h("main", { class: "main" }, topbar(route.id), h("div", { class: "content", id: "view" }))
     )
   );
@@ -242,6 +270,12 @@ onLangChange(() => {
 });
 window.addEventListener("hashchange", () => {
   if (document.querySelector(".app")) renderShell();
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && mobileNavOpen) setMobileNav(false);
+});
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 980 && mobileNavOpen) setMobileNav(false);
 });
 setInterval(() => {
   if (document.querySelector(".app")) refreshHealth();

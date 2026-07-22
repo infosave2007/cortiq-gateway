@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.32] - 2026-07-22
+
+### Added
+- **Responsive mobile admin console**: Added a hamburger navigation drawer, touch-friendly controls, phone-sized forms and cards, scrollable tables, compact toolbars, safe-area support, and mobile bottom-sheet dialogs across the admin interface.
+- **Accessible mobile interactions**: Navigation and dialogs now support backdrop dismissal, Escape-key closing, reduced-motion preferences, and explicit accessibility attributes.
+
+### Fixed
+- **Add model dialog**: Restored the missing `opt` helper import that prevented the Add model button from opening its form.
+- **Local model settings on phones**: Reflowed managed CMF server controls to avoid clipped fields and actions on narrow screens.
+
 ## [0.2.31] - 2026-07-22
 
 ### Added
