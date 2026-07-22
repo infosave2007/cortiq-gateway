@@ -290,10 +290,16 @@ fn spawn_serve(server: &CmfServer, cfg: &CmfCfg) -> Result<Child, String> {
     if server.threads > 1 {
         cmd.env("CMF_THREADS", server.threads.to_string());
     }
-    // Offload large matvecs to the GPU (Metal on macOS). Memory-bandwidth-bound
-    // on unified memory, so mostly a prefill win; opt-in.
     if server.gpu {
         cmd.env("CMF_GPU", "1");
+    }
+    if let Some(o1) = &server.o1 {
+        if !o1.trim().is_empty() && o1 != "off" {
+            cmd.arg("--o1").arg(o1);
+        }
+    }
+    if server.skip_mtp {
+        cmd.arg("--skip-mtp");
     }
     cmd.stdout(Stdio::null())
         .stderr(Stdio::null())

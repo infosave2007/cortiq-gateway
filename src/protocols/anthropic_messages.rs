@@ -101,6 +101,7 @@ async fn handler(
             temperature: req.temperature,
             max_tokens: req.max_tokens,
             top_p: req.top_p,
+            think_budget: None,
             stop: Vec::new(),
             passthrough: Default::default(),
         },

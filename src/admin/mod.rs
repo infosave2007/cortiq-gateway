@@ -1330,6 +1330,13 @@ async fn register_import(State(state): State<SharedState>, Path(job): Path<Strin
             port,
             threads: cfg.cmf.threads,
             gpu: cfg.cmf.gpu,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            think_budget: None,
+            system_prompt: None,
+            o1: None,
+            skip_mtp: false,
         });
     } else {
         cfg.models.push(crate::config::ModelCfg {
@@ -1343,6 +1350,13 @@ async fn register_import(State(state): State<SharedState>, Path(job): Path<Strin
             kind: "chat".into(),
             api_key_env: None,
             caps: Vec::new(),
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            think_budget: None,
+            system_prompt: None,
+            o1: None,
+            skip_mtp: false,
         });
     }
     state.reload(cfg)?;

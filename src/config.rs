@@ -83,6 +83,27 @@ pub struct CmfServer {
     /// Offload matvecs to the GPU (CMF_GPU=1).
     #[serde(default)]
     pub gpu: bool,
+    /// Default generation temperature (0.0 .. 2.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Default nucleus sampling threshold (0.0 .. 1.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    /// Default maximum completion tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    /// Reasoning / thinking token budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub think_budget: Option<u32>,
+    /// Default system prompt prepended if request lacks one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    /// O(1) constant-memory streaming attention hint (all, deep, custom, off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub o1: Option<String>,
+    /// Skip Multi-Token Prediction (MTP) heads.
+    #[serde(default)]
+    pub skip_mtp: bool,
 }
 
 /// CMF-format model factory: import a HuggingFace model, convert it to a
@@ -172,6 +193,13 @@ impl CmfCfg {
                 port: self.local_port,
                 threads: self.threads,
                 gpu: self.gpu,
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                think_budget: None,
+                system_prompt: None,
+                o1: None,
+                skip_mtp: false,
             }];
         }
         Vec::new()
@@ -306,6 +334,27 @@ pub struct ModelCfg {
     pub api_key_env: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub caps: Vec<String>,
+    /// Default generation temperature (0.0 .. 2.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Default nucleus sampling threshold (0.0 .. 1.0).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    /// Default maximum completion tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    /// Reasoning / thinking token budget.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub think_budget: Option<u32>,
+    /// Default system prompt prepended if request lacks one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_prompt: Option<String>,
+    /// O(1) constant-memory streaming attention hint (all, deep, custom, off).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub o1: Option<String>,
+    /// Skip Multi-Token Prediction (MTP) heads.
+    #[serde(default)]
+    pub skip_mtp: bool,
 }
 fn default_kind() -> String {
     "chat".into()
