@@ -324,7 +324,7 @@ async fn download_cmf_repo(
     let cmf_path = match cmf_rel_path {
         Some(p) => p,
         None => {
-            let repo_name = repo.split('/').last().unwrap_or(&repo);
+            let repo_name = repo.rsplit('/').next().unwrap_or(&repo);
             format!("{repo_name}.cmf")
         }
     };
@@ -491,9 +491,13 @@ pub fn start_import(store: Arc<JobStore>, cfg: &CmfCfg, p: ImportParams) -> Resu
         let r = p.repo.to_lowercase();
         if r.contains("2bit") || r.contains("q1t") {
             "Q1T".to_string()
-        } else if r.contains("1.7bcmf") || r.contains("27bcmf") || r.contains("cmf") {
-            "Q1".to_string()
-        } else if p.quant.is_empty() || p.quant == "auto" || p.quant == "Q8_2F" {
+        } else if r.contains("1.7bcmf")
+            || r.contains("27bcmf")
+            || r.contains("cmf")
+            || p.quant.is_empty()
+            || p.quant == "auto"
+            || p.quant == "Q8_2F"
+        {
             "Q1".to_string()
         } else {
             p.quant.clone()
