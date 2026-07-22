@@ -61,6 +61,11 @@ fn resolve_admin_token(cfg: &Config, args: &Args) -> (String, bool) {
             return (t.clone(), false);
         }
     }
+    if let Some(t) = &cfg.admin.token {
+        if !t.is_empty() {
+            return (t.clone(), false);
+        }
+    }
     (admin::random_token(24), true)
 }
 

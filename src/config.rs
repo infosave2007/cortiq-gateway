@@ -98,10 +98,19 @@ pub struct CmfServer {
     /// Default system prompt prepended if request lacks one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
-    /// O(1) constant-memory streaming attention hint (all, deep, custom, off).
+    /// O(1) Nyström attention layer spec (all | deepN | i,j,k | off).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub o1: Option<String>,
-    /// Skip Multi-Token Prediction (MTP) heads.
+    /// O(1) landmark budget (default 32; ≥4).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub o1_m: Option<u32>,
+    /// O(1) exact-window width (default 128).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub o1_window: Option<u32>,
+    /// O(1) permanent exact sink keys (default 4, StreamingLLM discipline).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub o1_sink: Option<u32>,
+    /// Disable Multi-Token Prediction speculative decoding (CMF_MTP=0).
     #[serde(default)]
     pub skip_mtp: bool,
 }
@@ -199,6 +208,9 @@ impl CmfCfg {
                 think_budget: None,
                 system_prompt: None,
                 o1: None,
+                o1_m: None,
+                o1_window: None,
+                o1_sink: None,
                 skip_mtp: false,
             }];
         }
@@ -510,10 +522,12 @@ pub struct AdminCfg {
     /// Whether the admin panel and admin API (`/admin`, `/admin/api/*`) are enabled.
     #[serde(default = "default_admin_enabled")]
     pub enabled: bool,
-    /// Name of the env variable holding the admin token. If unset (or empty),
-    /// a token is generated at startup and printed to the log.
+    /// Name of the env variable holding the admin token.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token_env: Option<String>,
+    /// Persistent admin token configured directly in toml.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
     /// Optional separate bind address for the admin surface (e.g. `127.0.0.1:9001`).
     /// If unset, the admin interface lives on the main `listen` address under `/admin`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -524,6 +538,7 @@ impl Default for AdminCfg {
         Self {
             enabled: default_admin_enabled(),
             token_env: None,
+            token: None,
             listen: None,
         }
     }

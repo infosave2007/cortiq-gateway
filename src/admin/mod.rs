@@ -1336,6 +1336,9 @@ async fn register_import(State(state): State<SharedState>, Path(job): Path<Strin
             think_budget: None,
             system_prompt: None,
             o1: None,
+            o1_m: None,
+            o1_window: None,
+            o1_sink: None,
             skip_mtp: false,
         });
     } else {

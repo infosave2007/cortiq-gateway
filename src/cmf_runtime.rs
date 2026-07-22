@@ -293,13 +293,27 @@ fn spawn_serve(server: &CmfServer, cfg: &CmfCfg) -> Result<Child, String> {
     if server.gpu {
         cmd.env("CMF_GPU", "1");
     }
+    // O(1) Nyström attention: layers spec + sub-parameters.
     if let Some(o1) = &server.o1 {
-        if !o1.trim().is_empty() && o1 != "off" {
-            cmd.arg("--o1").arg(o1);
+        let s = o1.trim();
+        if !s.is_empty() {
+            // Pass even "off" so it explicitly overrides a file converter hint.
+            cmd.arg("--o1").arg(s);
         }
     }
+    if let Some(m) = server.o1_m {
+        cmd.arg("--o1-m").arg(m.to_string());
+    }
+    if let Some(w) = server.o1_window {
+        cmd.arg("--o1-window").arg(w.to_string());
+    }
+    if let Some(sink) = server.o1_sink {
+        cmd.arg("--o1-sink").arg(sink.to_string());
+    }
+    // MTP (Multi-Token Prediction) speculative decoding: the engine reads
+    // CMF_MTP env; "0" disables.  There is no CLI flag for this.
     if server.skip_mtp {
-        cmd.arg("--skip-mtp");
+        cmd.env("CMF_MTP", "0");
     }
     cmd.stdout(Stdio::null())
         .stderr(Stdio::null())

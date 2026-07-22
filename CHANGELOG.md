@@ -3,6 +3,16 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.2.31] - 2026-07-22
+
+### Added
+- **Structured O(1) Nyström Attention & Reasoning Control**: Enhanced settings drawer with structured parameter sections for O(1) Nyström Streaming Attention (`o1_m`, `o1_window`, `o1_sink`), Generation (Temp, Top-P, MaxTokens, System Prompt), Reasoning ("Disable reasoning" toggle mapping to `think_budget = 0` for Qwen3/3.5 models), and Runtime (`skip_mtp` via `CMF_MTP=0`).
+- **Persistent Admin Token Configuration**: Support for explicit `token` field in `config/gateway.toml` under `[admin]` block to prevent authorization invalidation across restarts.
+
+### Fixed
+- **JavaScript UI Helper Restoration**: Restored `opt(...)` helper in `web/js/ui.js` and `web/js/views/import.js` to ensure HF model import modal options render smoothly.
+- **Engine Command Flag Accuracy**: Fixed `CMF_MTP=0` environment flag pass-through for `cortiq serve` processes.
+
 ## [0.2.30] - 2026-07-22
 
 ### Added

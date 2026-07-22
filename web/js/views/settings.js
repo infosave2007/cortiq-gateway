@@ -253,33 +253,82 @@ export async function renderSettings() {
       } catch (e) { mount(st, String(e.message || e)); }
       checkBtn.disabled = false;
     });
-    // ⚙ Model Generation & Thinking Parameters drawer
-    const tempIn = h("input", { type: "number", step: "0.05", min: "0", max: "2.0", placeholder: "0.7", value: sv.temperature ?? "", style: "width:65px" });
-    const topPIn = h("input", { type: "number", step: "0.05", min: "0", max: "1.0", placeholder: "0.9", value: sv.top_p ?? "", style: "width:65px" });
-    const maxTokIn = h("input", { type: "number", min: "1", placeholder: "2048", value: sv.max_tokens ?? "", style: "width:80px" });
-    const thinkIn = h("input", { type: "number", min: "0", placeholder: "1024", value: sv.think_budget ?? "", style: "width:80px" });
-    const o1Sel = h("select", { style: "width:110px" },
-      opt("", "O(1) auto"),
-      opt("all", "O(1) all"),
-      opt("deep", "O(1) deep"),
-      opt("off", "O(1) off"));
-    if (sv.o1) o1Sel.value = sv.o1;
-    const skipMtpCb = h("input", { type: "checkbox", checked: sv.skip_mtp ? true : null });
-    const sysIn = h("input", { placeholder: t("models.form.systemPromptPlaceholder"), value: sv.system_prompt || "", style: "flex:1" });
 
-    const drawer = h("div", { class: "flex wrap gap-sm", style: "display:none;width:100%;margin-top:4px;padding:6px;background:var(--bg-subtle);border-radius:4px;align-items:center" },
-      h("span", { class: "small muted" }, "Temp:"), tempIn,
-      h("span", { class: "small muted" }, "Top-P:"), topPIn,
-      h("span", { class: "small muted" }, "MaxTokens:"), maxTokIn,
-      h("span", { class: "small muted" }, "ThinkBudget:"), thinkIn,
-      o1Sel,
-      h("label", { class: "check small" }, skipMtpCb, "Skip MTP"),
-      h("span", { class: "small muted" }, "System:"), sysIn
+    // ── O(1) Nyström Attention ──
+    // NOT a "reasoning mode". This is a memory-efficient streaming attention
+    // kernel (Nyström/landmark) that replaces standard KV-cache attention,
+    // giving O(1) memory per decode step instead of O(n).
+    const o1Sel = h("select", { style: "width:120px", title: "O(1) Nyström attention layer spec: which layers replace KV-cache with streaming Nyström attention" },
+      h("option", { value: "" }, "O(1) авто"),
+      h("option", { value: "all" }, "O(1) все слои"),
+      h("option", { value: "deep" }, "O(1) глубокие"),
+      h("option", { value: "off" }, "O(1) выкл."));
+    if (sv.o1) o1Sel.value = sv.o1;
+    const o1mIn = h("input", { type: "number", min: "4", placeholder: "32", value: sv.o1_m ?? "", style: "width:55px", title: "Landmark budget (≥4, default 32). More landmarks ≠ better: m=64 measured worse." });
+    const o1wIn = h("input", { type: "number", min: "1", placeholder: "128", value: sv.o1_window ?? "", style: "width:60px", title: "Exact-window width — main quality lever (default 128)" });
+    const o1sinkIn = h("input", { type: "number", min: "0", placeholder: "4", value: sv.o1_sink ?? "", style: "width:50px", title: "Permanent exact sink keys, StreamingLLM discipline (default 4)" });
+
+    // ── Generation parameters ──
+    const tempIn = h("input", { type: "number", step: "0.05", min: "0", max: "2.0", placeholder: "0.7", value: sv.temperature ?? "", style: "width:60px" });
+    const topPIn = h("input", { type: "number", step: "0.05", min: "0", max: "1.0", placeholder: "0.9", value: sv.top_p ?? "", style: "width:60px" });
+    const maxTokIn = h("input", { type: "number", min: "1", placeholder: "2048", value: sv.max_tokens ?? "", style: "width:75px" });
+    // think_budget = 0 means reasoning disabled (enable_thinking=false);
+    // null = model decides; N>0 = token budget for the <think> block.
+    const noThinkCb = h("input", { type: "checkbox", checked: (sv.think_budget === 0) ? true : null, title: "Отключить режим размышлений (think_budget=0, enable_thinking=false для Qwen3/3.5)" });
+    const thinkIn = h("input", { type: "number", min: "1", placeholder: "авто", value: (sv.think_budget && sv.think_budget > 0) ? sv.think_budget : "", style: "width:75px", title: "Бюджет токенов на размышления (think_budget). Пустое = модель решает сама." });
+    if (sv.think_budget === 0) thinkIn.disabled = true;
+    noThinkCb.addEventListener("change", () => {
+      thinkIn.disabled = noThinkCb.checked;
+      if (noThinkCb.checked) thinkIn.value = "";
+    });
+    const sysIn = h("input", { placeholder: "System prompt (optional)", value: sv.system_prompt || "", style: "flex:1;min-width:200px" });
+
+    // ── MTP (Multi-Token Prediction): speculative decoding, NOT reasoning ──
+    const skipMtpCb = h("input", { type: "checkbox", checked: sv.skip_mtp ? true : null, title: "Disable MTP speculative decoding (env CMF_MTP=0)" });
+
+    // ── Settings drawer ──
+    const drawerStyle = "display:none;width:100%;margin-top:6px;padding:10px 12px;background:var(--bg-subtle);border-radius:6px;border:1px solid var(--border)";
+    const groupStyle = "display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:4px 0";
+    const labelStyle = "font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;width:100%;margin-bottom:2px";
+
+    const drawer = h("div", { style: drawerStyle },
+      // Group 1: O(1) Nyström Attention
+      h("div", { style: labelStyle }, "O(1) Nyström Attention"),
+      h("div", { style: groupStyle },
+        h("span", { class: "small muted" }, "Слои:"), o1Sel,
+        h("span", { class: "small muted" }, "m:"), o1mIn,
+        h("span", { class: "small muted" }, "Window:"), o1wIn,
+        h("span", { class: "small muted" }, "Sink:"), o1sinkIn
+      ),
+      h("hr", { style: "border:none;border-top:1px solid var(--border);margin:6px 0" }),
+      // Group 2: Generation
+      h("div", { style: labelStyle }, "Генерация"),
+      h("div", { style: groupStyle },
+        h("span", { class: "small muted" }, "Temp:"), tempIn,
+        h("span", { class: "small muted" }, "Top-P:"), topPIn,
+        h("span", { class: "small muted" }, "Max токенов:"), maxTokIn
+      ),
+      h("div", { style: groupStyle },
+        h("span", { class: "small muted" }, "System prompt:"), sysIn
+      ),
+      h("hr", { style: "border:none;border-top:1px solid var(--border);margin:6px 0" }),
+      // Group 3: Reasoning (thinking)
+      h("div", { style: labelStyle }, "Режим размышлений"),
+      h("div", { style: groupStyle },
+        h("label", { class: "check small", title: "Для моделей Qwen3/3.5: enable_thinking=false — модель отвечает напрямую без блока <think>" }, noThinkCb, "Отключить размышления"),
+        h("span", { class: "small muted" }, "Think budget:"), thinkIn
+      ),
+      h("hr", { style: "border:none;border-top:1px solid var(--border);margin:6px 0" }),
+      // Group 4: Runtime
+      h("div", { style: labelStyle }, "Runtime"),
+      h("div", { style: groupStyle },
+        h("label", { class: "check small", title: "MTP — Multi-Token Prediction (спекулятивное декодирование). Отключение замедляет генерацию, но стабилизирует output." }, skipMtpCb, "Отключить MTP")
+      )
     );
 
-    const gearBtn = h("button", { class: "btn small", type: "button", title: "⚙ " + t("models.form.paramsTitle") }, "⚙");
+    const gearBtn = h("button", { class: "btn small", type: "button", title: "⚙ Настройки модели" }, "⚙");
     gearBtn.addEventListener("click", () => {
-      drawer.style.display = drawer.style.display === "none" ? "flex" : "none";
+      drawer.style.display = drawer.style.display === "none" ? "block" : "none";
     });
 
     const row = h("div", { class: "flex wrap", style: "gap:6px;align-items:center;margin:6px 0" },
@@ -293,8 +342,11 @@ export async function renderSettings() {
       temperature: tempIn.value !== "" ? parseFloat(tempIn.value) : null,
       top_p: topPIn.value !== "" ? parseFloat(topPIn.value) : null,
       max_tokens: maxTokIn.value !== "" ? parseInt(maxTokIn.value) : null,
-      think_budget: thinkIn.value !== "" ? parseInt(thinkIn.value) : null,
+      think_budget: noThinkCb.checked ? 0 : (thinkIn.value !== "" ? parseInt(thinkIn.value) : null),
       o1: o1Sel.value || null,
+      o1_m: o1mIn.value !== "" ? parseInt(o1mIn.value) : null,
+      o1_window: o1wIn.value !== "" ? parseInt(o1wIn.value) : null,
+      o1_sink: o1sinkIn.value !== "" ? parseInt(o1sinkIn.value) : null,
       skip_mtp: skipMtpCb.checked,
       system_prompt: sysIn.value.trim() || null,
     }) };
