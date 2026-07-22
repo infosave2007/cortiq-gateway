@@ -467,16 +467,70 @@ async fn provider_models(
     }
     // OpenAI + Anthropic both return { "data": [ { "id": ... } ] }.
     let v: Value = serde_json::from_str(&body).unwrap_or(json!({}));
-    let mut models: Vec<String> = v["data"]
+    let mut models: Vec<Value> = v["data"]
         .as_array()
         .map(|arr| {
             arr.iter()
-                .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                .filter_map(|m| {
+                    let id = m["id"].as_str()?.to_string();
+                    let mut obj = json!({ "id": id });
+                    let mut caps = vec![];
+                    if let Some(pricing) = m.get("pricing").filter(|v| !v.is_null()) {
+                        if let Some(prompt) = pricing.get("prompt").and_then(|s| s.as_str()).and_then(|s| s.parse::<f64>().ok()) {
+                            obj["price_in"] = json!(prompt * 1_000_000.0);
+                        }
+                        if let Some(comp) = pricing.get("completion").and_then(|s| s.as_str()).and_then(|s| s.parse::<f64>().ok()) {
+                            obj["price_out"] = json!(comp * 1_000_000.0);
+                        }
+                        if pricing.get("input_cache_read").filter(|v| !v.is_null()).is_some() || pricing.get("input_cache_write").filter(|v| !v.is_null()).is_some() {
+                            caps.push("caching");
+                        }
+                    }
+                    if let Some(params) = m.get("supported_parameters").and_then(|p| p.as_array()) {
+                        let has_tools = params.iter().any(|p| p.as_str() == Some("tools") || p.as_str() == Some("tool_choice"));
+                        if has_tools { caps.push("tools"); }
+                        let has_json = params.iter().any(|p| p.as_str() == Some("response_format"));
+                        if has_json { caps.push("json"); }
+                        let has_reasoning = params.iter().any(|p| p.as_str() == Some("reasoning") || p.as_str() == Some("include_reasoning"));
+                        if has_reasoning || m.get("reasoning").filter(|v| !v.is_null()).is_some() { caps.push("reasoning"); }
+                    }
+                    if let Some(arch) = m.get("architecture").filter(|v| !v.is_null()) {
+                        if let Some(inputs) = arch.get("input_modalities").and_then(|i| i.as_array()) {
+                            if inputs.iter().any(|i| i.as_str() == Some("image")) { caps.push("vision"); }
+                            if inputs.iter().any(|i| i.as_str() == Some("audio")) { caps.push("audio"); }
+                        }
+                    }
+                    if !caps.is_empty() {
+                        obj["caps"] = json!(caps);
+                    }
+                    Some(obj)
+                })
                 .collect()
         })
         .unwrap_or_default();
-    models.sort();
-    ok(json!({ "ok": true, "count": models.len(), "models": models }))
+    models.sort_by(|a, b| a["id"].as_str().cmp(&b["id"].as_str()));
+
+    let mut resp = json!({ "ok": true, "count": models.len(), "models": models });
+
+    if b.provider == "openrouter" {
+        if let Some(k) = key {
+            if let Ok(cred_resp) = client.get("https://openrouter.ai/api/v1/credits")
+                .header("authorization", format!("Bearer {k}"))
+                .send().await
+            {
+                if let Ok(cred_body) = cred_resp.text().await {
+                    let cred_v: Value = serde_json::from_str(&cred_body).unwrap_or(json!({}));
+                    if let Some(data) = cred_v.get("data") {
+                        let total = data.get("total_credits").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        let usage = data.get("total_usage").and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        resp["balance"] = json!(total - usage);
+                    }
+                }
+            }
+        }
+    }
+
+    ok(resp)
 }
 
 async fn meta() -> ApiResult {

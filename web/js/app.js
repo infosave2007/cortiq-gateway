@@ -4,7 +4,7 @@ import { t, getLang, setLang, onLangChange, LANGS } from "./i18n.js";
 import { api, getToken, setToken, setUnauthorizedHandler } from "./api.js";
 import { renderLogin } from "./views/login.js";
 import { renderDashboard } from "./views/dashboard.js";
-import { renderModels } from "./views/models.js";
+import { renderModels } from "./views/models.js?v=3";
 import { renderImport } from "./views/import.js";
 import { renderRouting } from "./views/routing.js";
 import { renderProtocols } from "./views/protocols.js";

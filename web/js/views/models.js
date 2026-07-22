@@ -51,7 +51,16 @@ function modelForm(meta, existing) {
   const tierSel = h("select", {}, ...(meta.cost_tiers || ["cheap"]).map((c) => opt(c, c, c === m.cost_tier)));
   const priceInIn = h("input", { type: "number", step: "0.01", value: m.price_in ?? 0 });
   const priceOutIn = h("input", { type: "number", step: "0.01", value: m.price_out ?? 0 });
-  const capInputs = (meta.caps || ["tools", "vision"]).map((c) => {
+  const CAP_EMOJIS = {
+    tools: "🔧 tools",
+    vision: "👁️ vision",
+    audio: "🎙️ audio",
+    reasoning: "🧠 reasoning",
+    json: "📄 json",
+    caching: "⚡ caching"
+  };
+
+  const capInputs = (meta.caps || Object.keys(CAP_EMOJIS)).map((c) => {
     const cb = h("input", { type: "checkbox", checked: (m.caps || []).includes(c) ? true : null });
     return { c, cb };
   });
@@ -70,25 +79,55 @@ function modelForm(meta, existing) {
     capInputs.forEach(({ c, cb }) => { cb.checked = d.caps.includes(c); });
     keyIn.placeholder = d.needsKey ? t("models.form.apiKeyPlaceholder") : t("models.form.apiKeyNotNeeded");
     mount(keyStatus, "");
+    // Automatically pre-fetch models (especially useful for OpenRouter which doesn't need a key)
+    testKey(true);
   }
   providerSel.addEventListener("change", applyDefaults);
   if (!existing) applyDefaults();
 
-  // Auto-fill the id from the model name (until the user edits id by hand).
-  if (!existing) {
-    modelIn.addEventListener("input", () => {
-      if (!idIn.value || idIn._auto) {
-        idIn.value = slugId(modelIn.value);
-        idIn._auto = true;
+  let cachedModels = [];
+
+  const autofillData = () => {
+    console.log("autofillData triggered. modelIn.value:", modelIn.value);
+    console.log("cachedModels length:", cachedModels.length);
+    if (!existing && (!idIn.value || idIn._auto)) {
+      idIn.value = slugId(modelIn.value);
+      idIn._auto = true;
+      console.log("auto-filled idIn:", idIn.value);
+    }
+    const found = cachedModels.find((m) => (m.id || m) === modelIn.value);
+    console.log("found model:", found);
+    if (found) {
+      if (found.price_in !== undefined) {
+        priceInIn.value = parseFloat(Number(found.price_in).toFixed(4));
+        priceOutIn.value = parseFloat(Number(found.price_out).toFixed(4));
+        console.log("Updated prices:", priceInIn.value, priceOutIn.value);
       }
-    });
+      if (found.caps && Array.isArray(found.caps)) {
+        capInputs.forEach(({ c, cb }) => {
+          cb.checked = found.caps.includes(c);
+        });
+        console.log("Updated caps:", found.caps);
+      }
+    }
+  };
+  modelIn.addEventListener("input", autofillData);
+  modelIn.addEventListener("change", autofillData);
+
+  if (!existing) {
     idIn.addEventListener("input", () => { idIn._auto = false; });
+  } else {
+    console.log("Editing existing model, fetching testKey(true)");
+    testKey(true);
   }
 
-  async function testKey() {
-    if (!baseUrlIn.value.trim()) { mount(keyStatus, h("span", { style: "color:var(--bad)" }, t("models.form.baseUrl") + "?")); return; }
+  async function testKey(silent = false) {
+    if (!baseUrlIn.value.trim()) {
+      if (!silent) mount(keyStatus, h("span", { style: "color:var(--bad)" }, t("models.form.baseUrl") + "?"));
+      return;
+    }
     testBtn.disabled = true;
-    mount(keyStatus, t("models.form.testing"));
+    if (!silent) mount(keyStatus, t("models.form.testing"));
     try {
       const r = await api.providerModels({
         provider: providerSel.value,
@@ -97,18 +136,25 @@ function modelForm(meta, existing) {
         api_key_env: envFor(),
       });
       if (r.ok) {
-        dl.replaceChildren(...(r.models || []).map((mm) => h("option", { value: mm })));
-        mount(keyStatus, h("span", { style: "color:var(--good)" }, "✓ " + t("models.form.foundModels", { n: r.count })));
-        modelIn.focus();
+        cachedModels = r.models || [];
+        dl.replaceChildren(...cachedModels.map((mm) => h("option", { value: mm.id || mm })));
+        
+        let msg = "✓ " + t("models.form.foundModels", { n: r.count });
+        if (r.balance !== undefined) {
+          msg += ` (Balance: $${r.balance.toFixed(4)})`;
+        }
+        mount(keyStatus, h("span", { style: "color:var(--good)" }, msg));
+        if (!silent) modelIn.focus();
       } else {
-        mount(keyStatus, h("span", { style: "color:var(--bad)" }, "✗ " + (r.error || t("common.error"))));
+        if (!silent) mount(keyStatus, h("span", { style: "color:var(--bad)" }, "✗ " + (r.error || t("common.error"))));
       }
     } catch (e) {
-      mount(keyStatus, h("span", { style: "color:var(--bad)" }, "✗ " + String(e.message || e)));
+      if (!silent) mount(keyStatus, h("span", { style: "color:var(--bad)" }, "✗ " + String(e.message || e)));
     }
     testBtn.disabled = false;
   }
-  testBtn.addEventListener("click", testKey);
+  testBtn.addEventListener("click", () => testKey(false));
+  keyIn.addEventListener("change", () => testKey(true));
 
   const keyHint =
     existing && existing.key_source === "store" ? t("models.form.keyStored")
@@ -155,7 +201,7 @@ function modelForm(meta, existing) {
     dl,
     h("div", { class: "row" }, field(t("models.form.kind"), kindSel), field(t("models.form.costTier"), tierSel)),
     h("div", { class: "row" }, field(t("models.form.priceIn"), priceInIn), field(t("models.form.priceOut"), priceOutIn)),
-    field(t("models.form.caps"), h("div", { class: "flex wrap" }, ...capInputs.map(({ c, cb }) => h("label", { class: "check" }, cb, c)))),
+    field(t("models.form.caps"), h("div", { class: "flex wrap", style: "gap:10px" }, ...capInputs.map(({ c, cb }) => h("label", { class: "check", style: "margin:0" }, cb, CAP_EMOJIS[c] || c)))),
     advParams
   );
 
