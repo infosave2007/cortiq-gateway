@@ -51,6 +51,8 @@ impl OpenAiProvider {
         if let Some(tb) = req.params.think_budget {
             body["think_budget"] = tb.into();
             body["reasoning_effort"] = tb.into();
+            // cortiq serve uses enable_thinking (bool): 0 = off, >0 = on
+            body["enable_thinking"] = (tb > 0).into();
         }
         if !req.tools.is_empty() {
             body["tools"] = serde_json::Value::Array(req.tools.clone());

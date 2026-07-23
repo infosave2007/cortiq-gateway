@@ -472,7 +472,37 @@ impl Pipeline {
                 model_id,
                 route_source
             );
-            match provider.chat_stream(req.clone()).await {
+            // Merge per-model/server config (same as run_inner).
+            let mut req_call = req.clone();
+            if let Some(m_cfg) = live.cfg.models.iter().find(|m| m.id == model_id) {
+                if req_call.params.temperature.is_none() {
+                    req_call.params.temperature = m_cfg.temperature;
+                }
+                if req_call.params.top_p.is_none() {
+                    req_call.params.top_p = m_cfg.top_p;
+                }
+                if req_call.params.max_tokens.is_none() {
+                    req_call.params.max_tokens = m_cfg.max_tokens;
+                }
+                if req_call.params.think_budget.is_none() {
+                    req_call.params.think_budget = m_cfg.think_budget;
+                }
+            } else if let Some(s_cfg) = live.cfg.cmf.servers.iter().find(|s| s.id == model_id) {
+                if req_call.params.temperature.is_none() {
+                    req_call.params.temperature = s_cfg.temperature;
+                }
+                if req_call.params.top_p.is_none() {
+                    req_call.params.top_p = s_cfg.top_p;
+                }
+                if req_call.params.max_tokens.is_none() {
+                    req_call.params.max_tokens = s_cfg.max_tokens;
+                }
+                if req_call.params.think_budget.is_none() {
+                    req_call.params.think_budget = s_cfg.think_budget;
+                }
+            }
+
+            match provider.chat_stream(req_call).await {
                 Ok(stream) => {
                     let info = RouteInfo {
                         task_label: decision.task_label.clone(),
