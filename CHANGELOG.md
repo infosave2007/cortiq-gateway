@@ -3,7 +3,13 @@
 All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.2.32] - 2026-07-22
+## [0.2.35] - 2026-07-23
+
+### Fixed
+- **Streaming Pipeline System Prompt Merging**: Fixed system prompt injection in `run_stream` so configured model system prompts and reasoning suppression directives are properly passed into streaming requests.
+- **CMF Reasoning Mode Compatibility**: Fully integrated with `cortiq-engine` v0.5.17 for sampler-level logit bias reasoning token suppression and zero-token thinking bypass.
+
+## [0.2.34] - 2026-07-23
 
 ### Added
 - **Responsive mobile admin console**: Added a hamburger navigation drawer, touch-friendly controls, phone-sized forms and cards, scrollable tables, compact toolbars, safe-area support, and mobile bottom-sheet dialogs across the admin interface.

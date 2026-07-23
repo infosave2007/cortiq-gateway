@@ -48,11 +48,13 @@ impl OpenAiProvider {
         if let Some(m) = req.params.max_tokens {
             body["max_tokens"] = m.into();
         }
+        eprintln!("[to_wire] think_budget={:?}", req.params.think_budget);
         if let Some(tb) = req.params.think_budget {
             body["think_budget"] = tb.into();
             body["reasoning_effort"] = tb.into();
             // cortiq serve uses enable_thinking (bool): 0 = off, >0 = on
             body["enable_thinking"] = (tb > 0).into();
+            eprintln!("[to_wire] SET enable_thinking={}", tb > 0);
         }
         if !req.tools.is_empty() {
             body["tools"] = serde_json::Value::Array(req.tools.clone());
@@ -61,6 +63,10 @@ impl OpenAiProvider {
         for (k, v) in &req.params.passthrough {
             body[k] = v.clone();
         }
+        eprintln!(
+            "[to_wire] enable_thinking={:?}",
+            body.get("enable_thinking")
+        );
         body
     }
 }

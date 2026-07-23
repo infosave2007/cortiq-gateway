@@ -487,6 +487,20 @@ impl Pipeline {
                 if req_call.params.think_budget.is_none() {
                     req_call.params.think_budget = m_cfg.think_budget;
                 }
+                if let Some(sys) = &m_cfg.system_prompt {
+                    if !sys.trim().is_empty()
+                        && !req_call.messages.iter().any(|m| m.role == "system")
+                    {
+                        req_call.messages.insert(
+                            0,
+                            Message {
+                                role: "system".into(),
+                                content: sys.clone(),
+                                tool_calls: Vec::new(),
+                            },
+                        );
+                    }
+                }
             } else if let Some(s_cfg) = live.cfg.cmf.servers.iter().find(|s| s.id == model_id) {
                 if req_call.params.temperature.is_none() {
                     req_call.params.temperature = s_cfg.temperature;
@@ -499,6 +513,20 @@ impl Pipeline {
                 }
                 if req_call.params.think_budget.is_none() {
                     req_call.params.think_budget = s_cfg.think_budget;
+                }
+                if let Some(sys) = &s_cfg.system_prompt {
+                    if !sys.trim().is_empty()
+                        && !req_call.messages.iter().any(|m| m.role == "system")
+                    {
+                        req_call.messages.insert(
+                            0,
+                            Message {
+                                role: "system".into(),
+                                content: sys.clone(),
+                                tool_calls: Vec::new(),
+                            },
+                        );
+                    }
                 }
             }
 

@@ -99,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
 
     let mut app = Router::new()
         .route("/healthz", get(|| async { "ok" }))
+        .route("/health", get(|| async { "ok" }))
         .route("/readyz", get(|| async { "ready" }))
         .route("/metrics", get(admin::metrics))
         .merge(protocols::build_router());
@@ -109,7 +110,12 @@ async fn main() -> anyhow::Result<()> {
             .fallback(admin::assets::fallback);
     }
 
-    let app = app.with_state(state);
+    let cors = tower_http::cors::CorsLayer::new()
+        .allow_origin(tower_http::cors::Any)
+        .allow_methods(tower_http::cors::Any)
+        .allow_headers(tower_http::cors::Any);
+
+    let app = app.with_state(state).layer(cors);
 
     let listener = tokio::net::TcpListener::bind(&listen).await?;
     tracing::info!("cortiq-gateway listening on {listen}");
